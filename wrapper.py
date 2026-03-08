@@ -4,6 +4,7 @@ Usage:
     python wrapper.py claude
     python wrapper.py codex
     python wrapper.py gemini
+    python wrapper.py kimi
 
 Cross-platform:
   - Windows: injects keystrokes via Win32 WriteConsoleInput (wrapper_windows.py)
@@ -37,9 +38,14 @@ def _write_json_mcp_settings(config_file: Path, url: str, transport: str = "http
                               *, token: str = "") -> Path:
     """Write/merge a settings-style JSON file with nested mcpServers config.
 
-    Preserves existing servers in the file — only updates the agentchattr entry."""
+    Preserves existing servers in the file — only updates the agentchattr entry.
+
+    Gemini CLI 0.32+ expects:
+      - "httpUrl" key (not "url") for streamable-http transport
+      - "url" key for SSE transport
+      - "trust": true to skip per-call approval prompts
+    """
     config_file.parent.mkdir(parents=True, exist_ok=True)
-    # Read existing file to preserve other servers
     existing: dict = {}
     if config_file.exists():
         try:
@@ -47,11 +53,23 @@ def _write_json_mcp_settings(config_file: Path, url: str, transport: str = "http
         except Exception:
             pass
     servers = existing.get("mcpServers", {})
-    entry: dict = {"type": transport, "url": url}
+    # Gemini CLI uses "httpUrl" for streamable-http, "url" for SSE
+    if transport in ("http", "streamable-http"):
+        entry: dict = {"type": "http", "httpUrl": url, "trust": True}
+    else:
+        entry = {"type": transport, "url": url, "trust": True}
     if token:
         entry["headers"] = {"Authorization": f"Bearer {token}"}
     servers[SERVER_NAME] = entry
     existing["mcpServers"] = servers
+
+    # Enable folder trust so ~/.gemini/trustedFolders.json is respected
+    security = existing.get("security", {})
+    folder_trust = security.get("folderTrust", {})
+    folder_trust["enabled"] = True
+    security["folderTrust"] = folder_trust
+    existing["security"] = security
+
     config_file.write_text(json.dumps(existing, indent=2) + "\n", "utf-8")
     return config_file
 
@@ -112,11 +130,16 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
     "gemini": {
         "mcp_inject": "env",
         "mcp_env_var": "GEMINI_CLI_SYSTEM_SETTINGS_PATH",
-        "mcp_transport": "sse",
+        "mcp_transport": "http",  # streamable-http; SSE has blocking issues in Gemini 0.32.x
     },
     "codex": {
         "mcp_inject": "proxy_flag",
         "mcp_proxy_flag_template": '-c mcp_servers.{server}.url="{url}"',
+    },
+    "kimi": {
+        "mcp_inject": "flag",
+        "mcp_flag": "--mcp-config-file",
+        "mcp_transport": "http",
     },
 }
 
@@ -218,6 +241,40 @@ def _apply_mcp_inject(
     return launch_args, inject_env, settings_path
 
 
+def _ensure_gemini_folder_trusted(project_dir: Path) -> None:
+    """Add project_dir as TRUST_FOLDER in ~/.gemini/trustedFolders.json.
+
+    Gemini CLI blocks ALL MCPs (including system-settings ones) for untrusted
+    folders. A more-specific TRUST_FOLDER entry overrides any parent-level
+    DO_NOT_TRUST rule, so we always write the exact cwd we're launching in.
+    Respects GEMINI_CLI_TRUSTED_FOLDERS_PATH env override if set.
+    """
+    trusted_path_env = os.environ.get("GEMINI_CLI_TRUSTED_FOLDERS_PATH", "")
+    if trusted_path_env:
+        trusted_file = Path(trusted_path_env)
+    else:
+        trusted_file = Path.home() / ".gemini" / "trustedFolders.json"
+
+    try:
+        data: dict = {}
+        if trusted_file.exists():
+            try:
+                data = json.loads(trusted_file.read_text("utf-8"))
+            except Exception:
+                data = {}
+
+        folder_key = str(project_dir)
+        if data.get(folder_key) == "TRUST_FOLDER":
+            return  # already trusted — nothing to do
+
+        data[folder_key] = "TRUST_FOLDER"
+        trusted_file.parent.mkdir(parents=True, exist_ok=True)
+        trusted_file.write_text(json.dumps(data, indent=2) + "\n", "utf-8")
+        print(f"  Trusted folder for Gemini MCPs: {folder_key}")
+    except Exception as exc:
+        print(f"  Warning: could not update Gemini trusted folders: {exc}")
+
+
 def _build_provider_launch(
     agent: str,
     agent_cfg: dict,
@@ -304,12 +361,44 @@ def _fetch_role(server_port: int, agent_name: str) -> str:
         return ""
 
 
+def _fetch_active_rules(server_port: int, token: str = "") -> dict | None:
+    """Fetch active rules from the server."""
+    try:
+        import urllib.request
+        headers = {"Authorization": f"Bearer {token}"} if token else {}
+        req = urllib.request.Request(f"http://127.0.0.1:{server_port}/api/rules/active", headers=headers)
+        with urllib.request.urlopen(req, timeout=3) as resp:
+            return json.loads(resp.read())
+    except Exception:
+        return None
+
+
+def _report_rule_sync(server_port: int, agent_name: str, epoch: int, token: str = ""):
+    """Report that this agent has seen rules at the given epoch."""
+    try:
+        import urllib.request
+        body = json.dumps({"epoch": epoch}).encode()
+        headers = {"Content-Type": "application/json"}
+        if token:
+            headers["Authorization"] = f"Bearer {token}"
+        req = urllib.request.Request(
+            f"http://127.0.0.1:{server_port}/api/rules/agent_sync/{agent_name}",
+            method="POST",
+            data=body,
+            headers=headers,
+        )
+        urllib.request.urlopen(req, timeout=3)
+    except Exception:
+        pass
 
 
 def _queue_watcher(get_identity_fn, inject_fn, *, is_multi_instance: bool = False, trigger_flag=None,
-                   server_port: int = 8300, agent_name: str = ""):
+                   server_port: int = 8300, agent_name: str = "", get_token_fn=None,
+                   refresh_interval: int = 10):
     """Poll queue file and inject an MCP read task when triggered."""
     first_mention = True
+    last_rules_epoch = 0  # 0 = unknown/cold start — will inject on first trigger
+    trigger_count = 0
     while True:
         try:
             _, queue_file = get_identity_fn()
@@ -370,7 +459,27 @@ def _queue_watcher(get_identity_fn, inject_fn, *, is_multi_instance: bool = Fals
                     if not role and current_name != agent_name:
                         role = _fetch_role(server_port, agent_name)
                     if role:
-                        prompt += f" - your role: {role}"
+                        prompt += f"\n\nROLE: {role}"
+
+                    # Smart rules injection: first trigger, epoch change, or periodic refresh
+                    _token = get_token_fn() if get_token_fn else ""
+                    rules_data = _fetch_active_rules(server_port, _token)
+                    trigger_count += 1
+                    if rules_data:
+                        # Use server-side refresh_interval (live from settings UI)
+                        ri = rules_data.get("refresh_interval", refresh_interval)
+                        need_inject = (
+                            last_rules_epoch == 0
+                            or rules_data["epoch"] != last_rules_epoch
+                            or (ri > 0 and trigger_count % ri == 0)
+                        )
+                        if need_inject:
+                            if rules_data["rules"]:
+                                rules_text = "; ".join(rules_data["rules"])
+                                prompt += f"\n\nRULES:\n{rules_text}"
+                            last_rules_epoch = rules_data["epoch"]
+                            _report_rule_sync(server_port, current_name, rules_data["epoch"], _token)
+
                     if first_mention and is_multi_instance:
                         prompt += _IDENTITY_HINT
                         first_mention = False
@@ -528,6 +637,12 @@ def main():
     command = resolved
 
     project_dir = (ROOT / cwd).resolve()
+
+    # Gemini: ensure the project directory is trusted so MCPs are allowed.
+    # Gemini blocks ALL MCPs for untrusted folders — even system-settings ones.
+    if agent == "gemini" or inject_cfg.get("mcp_inject") == "env":
+        _ensure_gemini_folder_trusted(project_dir)
+
     launch_args, env, inject_env, mcp_settings_path = _build_provider_launch(
         agent=agent,
         agent_cfg=agent_cfg,
@@ -590,6 +705,7 @@ def main():
     _watcher_thread = None
     _is_multi_instance = registration.get("slot", 1) > 1
     _trigger_flag = [False]  # shared: queue watcher sets True, activity checker reads
+    _refresh_interval = 10  # default; overridden per-trigger by server settings
 
     def start_watcher(inject_fn):
         nonlocal _watcher_inject_fn, _watcher_thread
@@ -598,7 +714,8 @@ def main():
             target=_queue_watcher,
             args=(get_identity, inject_fn),
             kwargs={"is_multi_instance": _is_multi_instance, "trigger_flag": _trigger_flag,
-                    "server_port": server_port, "agent_name": assigned_name},
+                    "server_port": server_port, "agent_name": assigned_name,
+                    "get_token_fn": get_token, "refresh_interval": _refresh_interval},
             daemon=True,
         )
         _watcher_thread.start()
@@ -611,7 +728,9 @@ def main():
                 _watcher_thread = threading.Thread(
                     target=_queue_watcher,
                     args=(get_identity, _watcher_inject_fn),
-                    kwargs={"is_multi_instance": _is_multi_instance, "trigger_flag": _trigger_flag},
+                    kwargs={"is_multi_instance": _is_multi_instance, "trigger_flag": _trigger_flag,
+                            "server_port": server_port, "agent_name": assigned_name,
+                            "get_token_fn": get_token, "refresh_interval": _refresh_interval},
                     daemon=True,
                 )
                 _watcher_thread.start()

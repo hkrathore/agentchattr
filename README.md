@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Linux](https://img.shields.io/badge/platform-Linux-orange) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qzfn5YTT9a)
 
-A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, and **Gemini CLI** — and any MCP-compatible agent can join.
+A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, **Gemini CLI**, and **Kimi** — and any MCP-compatible agent can join.
 
 Agents and humans talk in a shared chat room with multiple channels — when anyone @mentions an agent, the server auto-injects a prompt into that agent's terminal, the agent reads the conversation and responds, and the loop continues hands-free. No copy-pasting between ugly terminals. No manual prompting.
 
@@ -18,6 +18,7 @@ Agents and humans talk in a shared chat room with multiple channels — when any
 - `start_claude.bat` — starts Claude (and the server if it's not already running)
 - `start_codex.bat` — starts Codex (and the server if it's not already running)
 - `start_gemini.bat` — starts Gemini (and the server if it's not already running)
+- `start_kimi.bat` — starts Kimi (and the server if it's not already running)
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server if one isn't already running, so you can launch in any order. Run multiple launchers for multiple agents — they share the same server.
 
@@ -28,7 +29,7 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 
 **2. Open the chat:** Go to **http://localhost:8300** in your browser, or double-click `open_chat.html`.
 
-**3. Talk to your agents:** Type `@claude`, `@codex`, or `@gemini` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**3. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, or `@kimi` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 > **Tip:** To manually prompt an agent to check chat, type `mcp read #general` in their terminal.
 
@@ -49,6 +50,7 @@ Open a terminal in the `macos-linux` folder (right-click → "Open Terminal Here
 - `sh start_claude.sh` — starts Claude (and the server if it's not already running)
 - `sh start_codex.sh` — starts Codex (and the server if it's not already running)
 - `sh start_gemini.sh` — starts Gemini (and the server if it's not already running)
+- `sh start_kimi.sh` — starts Kimi (and the server if it's not already running)
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server in a separate terminal window if one isn't already running. The agent opens inside a **tmux** session. Detach with `Ctrl+B, D` — the agent keeps running in the background. Reattach with `tmux attach -t agentchattr-claude`.
 
@@ -59,7 +61,7 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 
 **3. Open the chat:** Go to **http://localhost:8300** or open `open_chat.html`.
 
-**4. Talk to your agents:** Type `@claude`, `@codex`, or `@gemini` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**4. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, or `@kimi` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 ---
 
@@ -106,12 +108,27 @@ Assign roles to agents to steer their behavior — Planner, Builder, Reviewer, R
 
 Click the role pill in any message header to open the picker — choose from presets or type a custom role. Roles are global per agent (not per-channel), persist across server restarts, and update instantly across all messages. Clear a role by selecting "None".
 
-### Decisions
-Lightweight project memory for keeping agents aligned. Agents propose decisions via MCP (`chat_decision(action='propose')`), humans approve or reject them in the web UI. Approved decisions act as authoritative guidance — agents read them at session start to understand agreed conventions, architecture choices, and workflow rules.
+### Rules
+Rules set the working style for your agents. Agents can propose rules via MCP (`chat_rules(action='propose')`), or you can add one directly from the Rules panel with `+`. Proposed rules appear as cards in the chat timeline, where you can **Activate**, **Add to drafts**, or **Dismiss** them.
 
-The decisions panel opens from the header (checkbox icon). Each decision shows a status pill (amber = proposed, purple = approved), the proposer's name, and the decision text. Click a status pill to toggle approval. Inline editing and deletion with optional rejection messages. Resizable sidebar with a drag grip. Max 30 decisions, 80 chars each.
+The Rules panel opens from the header. Rules are grouped into **Active**, **Drafts**, and **Archive**. Active rules are sent to agents on their next trigger, then re-sent when rules change or according to the **Rule refresh** setting. Click any rule to edit it, drag between groups to change status, and drag archived rules to the trash to delete them. A soft warning appears at 7+ active rules, because a smaller set tends to work better.
 
-Click **debate** on any decision to send it to chat for all agents to argue about. The message pre-fills with @mentions for every agent and the decision text — hit Enter and watch them go at it.
+**Remind agents** re-sends the current rules on the next trigger. The badge on the Rules button shows unseen proposals only. Max 160 chars per rule.
+
+### Sessions
+Structured multi-agent workflows with sequential phases, role casting, and turn-taking. Sessions let you orchestrate a specific flow -- like a code review, debate, or planning session -- where agents take turns in defined roles with tailored prompts.
+
+**Built-in templates:** Code Review, Debate, Design Critique, and Planning. Click the play button in the input area to open the launcher, pick a template, review the auto-cast, and start.
+
+**Custom sessions:** Click "Design a session" in the launcher, pick an agent, and describe what you want. The agent proposes a session draft as a card in the timeline. From there:
+- **Run** -- opens a cast preview where you assign agents to roles, then starts the session
+- **Save Template** -- saves the draft as a reusable template in the launcher
+- **Request Changes** -- inline feedback form; the agent revises and the old draft is superseded
+- **Dismiss** -- demotes the proposal to a compact chat summary
+
+During a session, phase banners mark transitions in the timeline, a sticky session bar shows progress, and agents are triggered sequentially with phase-specific prompts. The output phase is highlighted when the session completes.
+
+Sessions are channel-scoped (one active per channel) and survive page refreshes. Custom templates persist across restarts.
 
 ### Activity indicators
 Status pills show a spinning border in each agent's color when that agent is actively working — so you can minimize the terminals and still know at a glance who's busy. Detection works by hashing the agent's terminal screen buffer every second: if anything changes (spinner, streaming text, tool output), the pill lights up. When the screen stops changing, it stops instantly. Cross-platform — Windows uses `ReadConsoleOutputW`, Mac/Linux uses `tmux capture-pane`.
@@ -136,7 +153,9 @@ When an agent resumes a previous session, it reads its chat history and tries to
 ### Notifications
 Per-agent notification sounds play when a message arrives while the chat window is unfocused — so you hear when an agent responds while you're in another tab. Pick from 7 built-in sounds (or "None") per agent in Settings. Sounds are silent during history load, for join/leave events, and for your own messages.
 
-Unread indicators keep you oriented across the UI — channel tabs show unread counts when new messages arrive, the scroll-to-bottom arrow displays an unread badge when you're scrolled up, and the decisions panel badge shows pending proposals awaiting review.
+Unread indicators keep you oriented across the UI — channel tabs show unread counts when new messages arrive, the scroll-to-bottom arrow displays an unread badge when you're scrolled up, and the rules panel badge shows unseen proposals awaiting review.
+
+A small update pill appears in the channel bar when a newer release is available on GitHub. It links to the releases page and can be dismissed (stays hidden until the next release). Forks see "Upstream update available" instead. The check runs once on page load with a 30-minute server-side cache, and stays hidden if anything is uncertain.
 
 ### Pinned messages
 Hover any message and click the **pin** button on the right to pin it. Click again to mark it done, once more to unpin. The cycle: **not pinned → todo → done → cleared**. A colored strip on the left shows the state (purple = todo, green = done).
@@ -224,7 +243,7 @@ The wrapper sends a heartbeat ping every 5 seconds to keep the agent marked as "
 When someone @mentions an offline agent, the message is still queued for delivery — the agent will pick it up when the wrapper next polls. A system notice ("X appears offline — message queued") lets you know the agent may not respond immediately.
 
 ### MCP tools
-Agents get 11 MCP tools: `chat_send`, `chat_read`, `chat_resync`, `chat_join`, `chat_who`, `chat_decision`, `chat_channels`, `chat_set_hat`, `chat_claim`, `chat_summary`, and `chat_propose_job`. All message tools accept an optional `channel` parameter. Decisions can be listed and proposed via MCP — approval, editing, and deletion are human-only via the web UI. Hats are SVG overlays on agent avatars — agents set them via `chat_set_hat`, humans can drag them to the trash to remove. Summaries are per-channel text snapshots — agents read and write them via `chat_summary` to help other agents catch up without reading the full scrollback. Pinned messages are managed through the web UI only. `chat_claim` lets agents reclaim a previous identity or accept an auto-assigned one in multi-instance setups. Any MCP-compatible agent can participate — no special integration needed.
+Agents get 11 MCP tools: `chat_send`, `chat_read`, `chat_resync`, `chat_join`, `chat_who`, `chat_rules`, `chat_channels`, `chat_set_hat`, `chat_claim`, `chat_summary`, and `chat_propose_job`. All message tools accept an optional `channel` parameter. Rules can be listed and proposed via MCP — activation, editing, and deletion are human-only via the web UI. When an agent proposes a rule, a proposal card appears in the chat timeline for the human to Activate, Add to drafts, or Dismiss. Hats are SVG overlays on agent avatars — agents set them via `chat_set_hat`, humans can drag them to the trash to remove. Summaries are per-channel text snapshots — agents read and write them via `chat_summary` to help other agents catch up without reading the full scrollback. Pinned messages are managed through the web UI only. `chat_claim` lets agents reclaim a previous identity or accept an auto-assigned one in multi-instance setups. Any MCP-compatible agent can participate — no special integration needed.
 
 Each agent instance gets its own MCP proxy (auto-assigned port) that injects the correct sender identity into all tool calls. This means agents don't need to know their own name — the proxy handles it transparently.
 
@@ -384,8 +403,11 @@ The wrapper registers with the server, watches for @mentions, reads recent chat 
 | `store.py` | JSONL message persistence with observer callbacks |
 | `registry.py` | Runtime agent registry — slot assignment, identity claims, rename tracking |
 | `jobs.py` | Job store — JSON persistence, status tracking, threaded conversations |
-| `decisions.py` | Decision store — JSON persistence, propose/approve/edit/delete |
+| `rules.py` | Rule store — JSON persistence, propose/activate/draft/archive/delete with epoch tracking |
 | `summaries.py` | Per-channel summary store — JSON persistence, read/write with 1000-char cap |
+| `session_engine.py` | Session orchestration — phase advancement, turn triggering, prompt assembly |
+| `session_store.py` | Session persistence — run state, template loading/validation, custom template storage |
+| `session_templates/` | Built-in session templates (JSON) — code review, debate, design critique, planning |
 | `router.py` | @mention parsing, agent routing, loop guard (human mentions always pass through) |
 | `agents.py` | Writes trigger queue files for wrapper to pick up |
 | `mcp_bridge.py` | MCP tool definitions (`chat_send`, `chat_read`, `chat_claim`, etc.) |
@@ -419,7 +441,8 @@ The chat server and web UI are fully cross-platform (Python + browser).
 
 agentchattr is designed for **localhost use only** and includes several protections:
 
-- **Session token** — a random token is generated on each server start and injected into the web UI. All API and WebSocket requests must present this token. No external process can interact with the server without it.
+- **Session token** — a random token is generated on each server start and injected into the web UI. All API and WebSocket requests must present this token.
+- **Loopback-only registration** — agent registration, deregistration, and heartbeat endpoints only accept connections from localhost, preventing remote agent impersonation.
 - **Origin checking** — the server rejects requests from origins that don't match `localhost` / `127.0.0.1`, preventing cross-origin and DNS rebinding attacks.
 - **No `shell=True`** — subprocess calls avoid shell injection by passing argument lists directly.
 - **Network binding warning** — if the server is configured to bind to a non-localhost address, it refuses to start unless you explicitly pass `--allow-network`.

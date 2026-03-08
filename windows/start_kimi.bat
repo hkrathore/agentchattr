@@ -1,5 +1,5 @@
 @echo off
-REM agentchattr — starts server (if not running) + Codex wrapper (auto-approve mode)
+REM agentchattr — starts server (if not running) + Kimi wrapper
 cd /d "%~dp0.."
 
 REM Auto-create venv and install deps on first run
@@ -9,11 +9,11 @@ if not exist ".venv" (
 )
 call .venv\Scripts\activate.bat
 
-REM Pre-flight: check that codex CLI is installed
-where codex >nul 2>&1
+REM Pre-flight: check that kimi CLI is installed
+where kimi >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
-    echo   Error: "codex" was not found on PATH.
+    echo   Error: "kimi" was not found on PATH.
     echo   Install it first, then try again.
     echo.
     pause
@@ -32,4 +32,9 @@ if %errorlevel% neq 0 (
     goto :wait_server
 )
 
-python wrapper.py codex -- --dangerously-bypass-approvals-and-sandbox
+python wrapper.py kimi
+if %errorlevel% neq 0 (
+    echo.
+    echo   Agent exited unexpectedly. Check the output above.
+    pause
+)

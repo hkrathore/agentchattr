@@ -15,12 +15,14 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from store import MessageStore
-from decisions import DecisionStore
+from rules import RuleStore
 from summaries import SummaryStore
 from jobs import JobStore
 from router import Router
 from agents import AgentTrigger
 from registry import RuntimeRegistry
+from session_store import SessionStore, validate_session_template
+from session_engine import SessionEngine
 
 log = logging.getLogger(__name__)
 
@@ -28,12 +30,14 @@ app = FastAPI(title="agentchattr")
 
 # --- globals (set by configure()) ---
 store: MessageStore | None = None
-decisions: DecisionStore | None = None
+rules: RuleStore | None = None
 summaries: SummaryStore | None = None
 jobs: JobStore | None = None
 router: Router | None = None
 agents: AgentTrigger | None = None
 registry: RuntimeRegistry | None = None
+session_store: SessionStore | None = None
+session_engine: SessionEngine | None = None
 config: dict = {}
 ws_clients: set[WebSocket] = set()
 
@@ -188,7 +192,17 @@ def _install_security_middleware(token: str, cfg: dict):
             # Static assets, index page, and uploaded images are public.
             # The index page injects the token client-side via same-origin script.
             # Uploads use random filenames and have path-traversal protection.
-            if path == "/" or path.startswith(("/static/", "/uploads/", "/api/heartbeat/", "/api/register", "/api/deregister/", "/api/roles")):
+            if path == "/" or path.startswith(("/static/", "/uploads/", "/api/roles")):
+                return await call_next(request)
+
+            # Agent registration/heartbeat: loopback only (no remote agent minting).
+            if path.startswith(("/api/register", "/api/deregister/", "/api/heartbeat/")):
+                client_ip = request.client.host if request.client else ""
+                if client_ip not in ("127.0.0.1", "::1", "localhost"):
+                    return JSONResponse(
+                        {"error": f"forbidden: agent registration is restricted to local loopback. Source {client_ip} is not allowed."},
+                        status_code=403,
+                    )
                 return await call_next(request)
 
             # --- Origin check (blocks cross-origin / DNS-rebinding attacks) ---
@@ -203,7 +217,7 @@ def _install_security_middleware(token: str, cfg: dict):
             # Allow registered agents to authenticate via Bearer token
             # for /api/messages and /api/send (no browser session needed).
             auth_header = request.headers.get("authorization", "")
-            if auth_header.lower().startswith("bearer ") and path in ("/api/messages", "/api/send"):
+            if auth_header.lower().startswith("bearer ") and (path in ("/api/messages", "/api/send") or path.startswith("/api/rules/")):
                 bearer = auth_header[7:].strip()
                 if _self.registry and _self.registry.resolve_token(bearer):
                     return await call_next(request)
@@ -224,9 +238,8 @@ def _install_security_middleware(token: str, cfg: dict):
 
 
 def configure(cfg: dict, session_token: str = ""):
-    global store, decisions, summaries, jobs, router, agents, registry, config
+    global store, rules, summaries, jobs, router, agents, registry, session_store, session_engine, config
     config = cfg
-
     # --- Security: store the session token and install middleware ---
     _install_security_middleware(session_token, cfg)
 
@@ -244,8 +257,13 @@ def configure(cfg: dict, session_token: str = ""):
     raw_upload_dir = cfg.get("images", {}).get("upload_dir", "./uploads")
     store.upload_dir = Path(raw_upload_dir)
     
-    decisions = DecisionStore(str(Path(data_dir) / "decisions.json"))
-    decisions.on_change(_on_decision_change)
+    # Rules store — migrates from legacy decisions.json automatically
+    rules_path = Path(data_dir) / "rules.json"
+    legacy_decisions = Path(data_dir) / "decisions.json"
+    if not rules_path.exists() and legacy_decisions.exists():
+        legacy_decisions.rename(rules_path)
+    rules = RuleStore(str(rules_path))
+    rules.on_change(_on_rule_change)
 
     summaries = SummaryStore(str(Path(data_dir) / "summaries.json"))
 
@@ -275,6 +293,15 @@ def configure(cfg: dict, session_token: str = ""):
     )
     agents = AgentTrigger(registry, data_dir=data_dir)
 
+    # Sessions
+    ROOT = Path(__file__).parent
+    session_store = SessionStore(
+        str(Path(data_dir) / "session_runs.json"),
+        templates_dir=str(ROOT / "session_templates"),
+    )
+    session_engine = SessionEngine(session_store, store, agents, registry)
+    session_store.on_change(_on_session_change)
+
     # Bridge: when ANY message is added to store (including via MCP),
     # broadcast to all WebSocket clients
     store.on_message(_on_store_message)
@@ -292,11 +319,12 @@ def configure(cfg: dict, session_token: str = ""):
     _known_online: set[str] = set()  # agents we've seen join — track for leave messages
     _posted_leave: set[str] = set()  # agents we've already posted a leave for — debounce
 
-    _known_active: set[str] = set()
+    _known_active = set()
 
     def _background_checks():
         import time as _time
         import mcp_bridge
+
         while True:
             _time.sleep(3)
             # Recovery flags
@@ -457,17 +485,18 @@ def _on_store_message(msg: dict):
     asyncio.run_coroutine_threadsafe(_handle_new_message(msg), _event_loop)
 
 
-def _on_decision_change(action: str, decision: dict):
-    """Called from any thread when a decision changes."""
+def _on_rule_change(action: str, rule: dict):
+    """Called from any thread when a rule changes."""
     if _event_loop is None:
         return
     try:
         loop = asyncio.get_running_loop()
         if loop is _event_loop:
-            asyncio.ensure_future(broadcast_decision(action, decision))
+            asyncio.ensure_future(broadcast_rule(action, rule))
             return
     except RuntimeError:
         pass
+    asyncio.run_coroutine_threadsafe(broadcast_rule(action, rule), _event_loop)
 
 
 def _on_job_change(action: str, data: dict):
@@ -484,29 +513,125 @@ def _on_job_change(action: str, data: dict):
     asyncio.run_coroutine_threadsafe(broadcast_job(action, data), _event_loop)
 
 
+def _on_session_change(action: str, session: dict):
+    """Called from any thread when a session changes."""
+    if _event_loop is None:
+        return
+    # Enrich with computed fields so the frontend gets phase_name, current_agent, etc.
+    if session_engine:
+        session = session_engine._enrich(dict(session))
+
+    # Add completion/interruption banners to chat timeline
+    if action == "complete" and store:
+        output_id = session.get("output_message_id")
+        # Tag the output message so it renders highlighted on reload
+        if output_id:
+            msg = store.get_by_id(output_id)
+            if msg:
+                meta = msg.get("metadata") or {}
+                meta["session_output"] = True
+                store.update_message(output_id, {"metadata": meta})
+        store.add(
+            sender="system",
+            text=f"Session complete: {session.get('template_name', '?')}",
+            msg_type="session_end",
+            channel=session.get("channel", "general"),
+            metadata={"session_id": session.get("id"), "output_message_id": output_id},
+        )
+    elif action == "interrupt" and store:
+        reason = session.get("interrupt_reason", "interrupted")
+        store.add(
+            sender="system",
+            text=f"Session ended: {session.get('template_name', '?')} ({reason})",
+            msg_type="session_end",
+            channel=session.get("channel", "general"),
+            metadata={"session_id": session.get("id"), "reason": reason},
+        )
+
+    try:
+        loop = asyncio.get_running_loop()
+        if loop is _event_loop:
+            asyncio.ensure_future(broadcast_session(action, session))
+            return
+    except RuntimeError:
+        pass
+    asyncio.run_coroutine_threadsafe(broadcast_session(action, session), _event_loop)
+
+
+_draft_ref_re = _re.compile(r'\[([a-f0-9]{8})\]')
+
+def _resolve_draft_lineage(text: str, channel: str) -> tuple[str, int]:
+    """Check if a session draft block is a revision of an existing draft.
+
+    Looks at the agent's own message text for a [draft_id] reference, and also
+    scans recent channel messages for "revise session draft [XXXX]" requests.
+    Returns (draft_id, revision). New drafts get a fresh id and revision=1.
+    """
+    # Check the message text itself for a draft_id reference
+    ref_match = _draft_ref_re.search(text)
+    ref_id = ref_match.group(1) if ref_match else None
+
+    if not ref_id:
+        # Also check recent messages for a "revise session draft [XXXX]" request
+        recent = store.get_recent(count=20, channel=channel)
+        for m in reversed(recent):
+            m_text = m.get("text", "")
+            if "revise session draft" in m_text.lower():
+                ref_match = _draft_ref_re.search(m_text)
+                if ref_match:
+                    ref_id = ref_match.group(1)
+                    break
+
+    if ref_id:
+        # Find the highest revision for this draft_id in existing messages
+        max_rev = 0
+        recent = store.get_recent(count=100, channel=channel)
+        for m in recent:
+            meta = m.get("metadata") or {}
+            if meta.get("draft_id") == ref_id:
+                max_rev = max(max_rev, meta.get("revision", 1))
+        if max_rev > 0:
+            return ref_id, max_rev + 1
+
+    return str(uuid.uuid4())[:8], 1
+
+
 async def _handle_new_message(msg: dict):
     """Broadcast message to web clients + check for @mention triggers."""
     # For broadcast slash commands, suppress the raw message — only the expanded
     # version should appear. Delete from store if it was persisted (MCP path),
     # and skip broadcasting the raw text.
     text = msg.get("text", "")
+    msg_type = msg.get("type", "chat")
+    sender = msg.get("sender", "")
+    channel = msg.get("channel", "general")
     # Strip @mentions to find the slash command (e.g. "@claude @codex /hatmaking")
     stripped = _re.sub(r"@[\w-]+\s*", "", text).strip().lower()
     _broadcast_cmds = ("/hatmaking", "/artchallenge", "/roastreview", "/poetry")
     cmd_word = stripped.split()[0] if stripped else ""
     is_broadcast_cmd = cmd_word in _broadcast_cmds
+    known_agents = set(registry.get_all_names()) if registry else set()
+    known_agents.update(config.get("agents", {}).keys())
+    _session_draft_re = _re.compile(r'```session\s*\n(.*?)\n```', _re.DOTALL)
+    draft_match = _session_draft_re.search(text)
+    is_agent_session_draft = bool(draft_match and sender in known_agents)
+    is_hidden_session_request = msg_type == "session_request"
 
-    if not is_broadcast_cmd:
+    suppress_broadcast = (
+        is_broadcast_cmd
+        or is_hidden_session_request
+        or is_agent_session_draft
+    )
+
+    if not suppress_broadcast:
         await broadcast(msg)
 
     # If the raw slash command was persisted (MCP path), silently remove it.
     # It was never broadcast to WebSocket clients, so no delete event needed.
-    if is_broadcast_cmd and msg.get("id"):
+    if suppress_broadcast and msg.get("id"):
         store.delete([msg["id"]])
 
-    # System messages never trigger routing — prevents infinite callback loops
-    sender = msg.get("sender", "")
-    channel = msg.get("channel", "general")
+    # System messages never trigger routing - prevents infinite callback loops
     if sender == "system":
         return
 
@@ -573,6 +698,50 @@ async def _handle_new_message(msg: dict):
         store.add(sender, f"{mentions} {prompts[form]}", channel=channel)
         return
 
+    # Detect session draft blocks from agents only.
+    # The session request prompt contains an example ```session block,
+    # so treating every non-system sender as a draft source creates a false
+    # invalid-draft card the moment the user asks for a custom session.
+    _session_draft_re = _re.compile(r'```session\s*\n(.*?)\n```', _re.DOTALL)
+    draft_match = _session_draft_re.search(text)
+    known_agents = set(registry.get_all_names()) if registry else set()
+    known_agents.update(config.get("agents", {}).keys())
+    if draft_match and sender in known_agents:
+        # Check if this is a revision of an existing draft
+        draft_id, revision = _resolve_draft_lineage(text, channel)
+
+        try:
+            draft_json = json.loads(draft_match.group(1))
+            errors = validate_session_template(draft_json)
+            if errors:
+                store.add(
+                    "system",
+                    f"Session draft from {sender} has errors:\n" + "\n".join(f"- {e}" for e in errors),
+                    msg_type="session_draft",
+                    channel=channel,
+                    metadata={"draft_id": draft_id, "revision": revision, "proposed_by": sender,
+                              "template": draft_json, "errors": errors, "valid": False},
+                )
+            else:
+                draft_json.setdefault("id", f"draft-{draft_id}")
+                store.add(
+                    "system",
+                    f"Session draft from {sender}: **{draft_json.get('name', '?')}**",
+                    msg_type="session_draft",
+                    channel=channel,
+                    metadata={"draft_id": draft_id, "revision": revision, "proposed_by": sender,
+                              "template": draft_json, "errors": [], "valid": True},
+                )
+        except json.JSONDecodeError:
+            store.add(
+                "system",
+                f"Session draft from {sender} contains invalid JSON.",
+                msg_type="session_draft",
+                channel=channel,
+                metadata={"draft_id": draft_id, "revision": revision, "proposed_by": sender,
+                           "errors": ["Invalid JSON in session block"], "valid": False},
+            )
+
     raw_targets = router.get_targets(sender, text, channel)
     # Resolve base family names to actual registered instances
     # e.g. 'claude' → 'claude-prime' when slot-1 was renamed
@@ -598,6 +767,13 @@ async def _handle_new_message(msg: dict):
 
     # Build a readable message string for the wake prompt
     chat_msg = f"{sender}: {text}" if text else ""
+    custom_prompt = text if is_hidden_session_request else ""
+
+    # Session turn guard: if a session is active on this channel and the sender
+    # is an agent, only allow triggering the agent whose turn it is.
+    # Human @mentions are always allowed (the session engine handles pausing).
+    sender_is_agent = sender in known_agents
+    allowed_agent = session_engine.get_allowed_agent(channel) if session_engine and sender_is_agent else None
 
     import mcp_bridge
     for target in targets:
@@ -606,10 +782,13 @@ async def _handle_new_message(msg: dict):
             inst = registry.get_instance(target)
             if inst and inst.get("state") == "pending":
                 continue
+        # Session guard: suppress out-of-turn agent triggers
+        if allowed_agent and target != allowed_agent:
+            continue
         if not mcp_bridge.is_online(target):
             store.add("system", f"{target} appears offline — message queued.", msg_type="system", channel=channel)
         if agents.is_available(target):
-            await agents.trigger(target, message=chat_msg, channel=channel)
+            await agents.trigger(target, message=chat_msg, channel=channel, prompt=custom_prompt)
 
 
 # --- broadcasting ---
@@ -696,8 +875,8 @@ async def broadcast_settings():
     ws_clients.difference_update(dead)
 
 
-async def broadcast_decision(action: str, decision: dict):
-    data = json.dumps({"type": "decision", "action": action, "data": decision})
+async def broadcast_rule(action: str, rule: dict):
+    data = json.dumps({"type": "rule", "action": action, "data": rule})
     dead = set()
     for client in list(ws_clients):
         try:
@@ -709,6 +888,17 @@ async def broadcast_decision(action: str, decision: dict):
 
 async def broadcast_job(action: str, data: dict):
     payload = json.dumps({"type": "job", "action": action, "data": data})
+    dead = set()
+    for client in list(ws_clients):
+        try:
+            await client.send_text(payload)
+        except Exception:
+            dead.add(client)
+    ws_clients.difference_update(dead)
+
+
+async def broadcast_session(action: str, session: dict):
+    payload = json.dumps({"type": "session", "action": action, "data": session})
     dead = set()
     for client in list(ws_clients):
         try:
@@ -789,8 +979,8 @@ async def websocket_endpoint(websocket: WebSocket):
     # Send todos {msg_id: status}
     await websocket.send_text(json.dumps({"type": "todos", "data": store.get_todos()}))
 
-    # Send decisions
-    await websocket.send_text(json.dumps({"type": "decisions", "data": decisions.list_all()}))
+    # Send rules
+    await websocket.send_text(json.dumps({"type": "rules", "data": rules.list_all()}))
 
     # Send hats
     await websocket.send_text(json.dumps({"type": "hats", "data": agent_hats}))
@@ -910,40 +1100,72 @@ async def websocket_endpoint(websocket: WebSocket):
                     await broadcast_todo_update(int(msg_id), None)
                 continue
 
-            elif event.get("type") == "decision_propose":
-                text = event.get("decision", "").strip()
-                owner = event.get("owner") or room_settings.get("username", "user")
+            elif event.get("type") in ("decision_propose", "rule_propose"):
+                text = event.get("text") or event.get("decision", "")
+                text = text.strip()
+                author = event.get("author") or event.get("owner") or room_settings.get("username", "user")
                 reason = event.get("reason", "")
+                is_human = author.lower() == room_settings.get("username", "user").lower()
                 if text:
-                    decisions.propose(text, owner, reason)
+                    rule = rules.propose(text, author, reason)
+                    if rule:
+                        if is_human:
+                            # Human-created rules go straight to draft, no card
+                            rules.make_draft(rule["id"])
+                        else:
+                            # Agent proposals get a card in the timeline
+                            channel = event.get("channel", "general")
+                            msg = store.add(
+                                author, f"Rule proposal: {text}",
+                                msg_type="rule_proposal",
+                                channel=channel,
+                                metadata={"rule_id": rule["id"], "text": text, "status": "pending"},
+                            )
+                            await broadcast(msg)
                 continue
 
-            elif event.get("type") == "decision_approve":
-                did = event.get("id")
-                if did is not None:
-                    decisions.approve(int(did))
+            elif event.get("type") in ("decision_approve", "rule_activate"):
+                rid = event.get("id")
+                if rid is not None:
+                    rules.activate(int(rid))
                 continue
 
-            elif event.get("type") == "decision_unapprove":
-                did = event.get("id")
-                if did is not None:
-                    decisions.unapprove(int(did))
+            elif event.get("type") in ("decision_unapprove", "rule_deactivate"):
+                rid = event.get("id")
+                if rid is not None:
+                    rules.deactivate(int(rid))
                 continue
 
-            elif event.get("type") == "decision_edit":
-                did = event.get("id")
-                if did is not None:
-                    decisions.edit(
-                        int(did),
-                        decision=event.get("decision"),
+            elif event.get("type") == "rule_make_draft":
+                rid = event.get("id")
+                if rid is not None:
+                    rules.make_draft(int(rid))
+                continue
+
+            elif event.get("type") in ("decision_edit", "rule_edit"):
+                rid = event.get("id")
+                if rid is not None:
+                    rules.edit(
+                        int(rid),
+                        text=event.get("text") or event.get("decision"),
                         reason=event.get("reason"),
                     )
                 continue
 
-            elif event.get("type") == "decision_delete":
-                did = event.get("id")
-                if did is not None:
-                    decisions.delete(int(did))
+            elif event.get("type") in ("decision_delete", "rule_delete"):
+                rid = event.get("id")
+                if rid is not None:
+                    rules.delete(int(rid))
+                continue
+
+            elif event.get("type") == "rule_remind":
+                rules.set_remind()
+                remind_data = json.dumps({"type": "rules_remind", "data": {}})
+                for client in list(ws_clients):
+                    try:
+                        await client.send_text(remind_data)
+                    except Exception:
+                        pass
                 continue
 
             elif event.get("type") == "update_settings":
@@ -964,6 +1186,12 @@ async def websocket_endpoint(websocket: WebSocket):
                         pass
                 if "contrast" in new and new["contrast"] in ("normal", "high"):
                     room_settings["contrast"] = new["contrast"]
+                if "rules_refresh_interval" in new:
+                    try:
+                        ri = int(new["rules_refresh_interval"])
+                        room_settings["rules_refresh_interval"] = max(0, min(ri, 100))
+                    except (ValueError, TypeError):
+                        pass
                 if "history_limit" in new:
                     val = str(new["history_limit"]).strip().lower()
                     if val == "all":
@@ -1204,24 +1432,129 @@ async def get_jobs(channel: str = "", status: str = ""):
 
 @app.post("/api/messages/{msg_id}/demote")
 async def demote_proposal(msg_id: int):
-    """Demote a job_proposal message back to a regular chat message."""
+    """Demote a proposal-style message back to a regular chat message."""
     msg = store.get_by_id(msg_id)
     if not msg:
         return JSONResponse({"error": "message not found"}, status_code=404)
-    if msg.get("type") != "job_proposal":
+    msg_type = msg.get("type")
+    if msg_type not in {"job_proposal", "session_draft"}:
         return JSONResponse({"error": "not a proposal"}, status_code=400)
-    # Convert proposal body to plain text, strip proposal metadata
     meta = msg.get("metadata", {})
-    body_text = meta.get("body", "")
-    title = meta.get("title", "")
-    plain_text = f"**{title}**\n\n{body_text}" if title else body_text or msg.get("text", "")
+    updated_fields = {"type": "chat", "metadata": {}}
+
+    if msg_type == "job_proposal":
+        body_text = meta.get("body", "")
+        title = meta.get("title", "")
+        plain_text = f"**{title}**\n\n{body_text}" if title else body_text or msg.get("text", "")
+        updated_fields["text"] = plain_text
+    else:
+        tmpl = meta.get("template")
+        errors = meta.get("errors", []) or []
+        proposed_by = meta.get("proposed_by") or msg.get("sender", "system")
+        parts = []
+
+        if isinstance(tmpl, dict):
+            name = str(tmpl.get("name", "")).strip()
+            desc = str(tmpl.get("description", "")).strip()
+            if name:
+                parts.append(f"**{name}**")
+            if desc:
+                parts.append(desc)
+            phases = tmpl.get("phases") or []
+            if phases:
+                lines = []
+                for i, ph in enumerate(phases, 1):
+                    ph_name = ph.get("name", f"Round {i}")
+                    participants = ", ".join(ph.get("participants", []))
+                    line = f"{i}. {ph_name}"
+                    if participants:
+                        line += f" -- {participants}"
+                    prompt = (ph.get("prompt") or "").strip()
+                    if prompt:
+                        line += f"\n   {prompt}"
+                    lines.append(line)
+                parts.append("\n".join(lines))
+        else:
+            label = str(msg.get("text", "")).strip() or "Session draft"
+            parts.append(label)
+            if errors:
+                parts.append("\n".join(f"- {e}" for e in errors))
+
+        updated_fields["sender"] = proposed_by
+        updated_fields["text"] = "\n\n".join(p for p in parts if p).strip()
+
+    updated = store.update_message(msg_id, updated_fields)
+    if updated:
+        # Broadcast the updated message to all clients
+        payload = json.dumps({"type": "edit", "message": updated})
+        dead = set()
+        for client in list(ws_clients):
+            try:
+                await client.send_text(payload)
+            except Exception:
+                dead.add(client)
+        ws_clients.difference_update(dead)
+    return updated or {"ok": True}
+
+
+@app.post("/api/messages/{msg_id}/resolve_rule_proposal")
+async def resolve_rule_proposal(msg_id: int, request: Request):
+    """Activate or dismiss a rule proposal."""
+    msg = store.get_by_id(msg_id)
+    if not msg:
+        return JSONResponse({"error": "message not found"}, status_code=404)
+    if msg.get("type") != "rule_proposal":
+        return JSONResponse({"error": "not a rule proposal"}, status_code=400)
+    body = await request.json()
+    action = body.get("action", "")
+    meta = msg.get("metadata", {})
+    rule_id = meta.get("rule_id")
+
+    if action == "activate" and rule_id is not None:
+        rules.activate(int(rule_id))
+        meta["status"] = "activated"
+    elif action == "draft" and rule_id is not None:
+        rules.make_draft(int(rule_id))
+        meta["status"] = "drafted"
+    elif action == "dismiss" and rule_id is not None:
+        rules.delete(int(rule_id))
+        meta["status"] = "dismissed"
+    else:
+        return JSONResponse({"error": "invalid action"}, status_code=400)
+
+    updated = store.update_message(msg_id, {"metadata": meta})
+    if updated:
+        # Broadcast the updated message so all clients re-render the card
+        payload = json.dumps({"type": "edit", "message": updated})
+        dead = set()
+        for client in list(ws_clients):
+            try:
+                await client.send_text(payload)
+            except Exception:
+                dead.add(client)
+        ws_clients.difference_update(dead)
+    return updated or {"ok": True}
+
+
+@app.post("/api/messages/{msg_id}/demote_rule_proposal")
+async def demote_rule_proposal(msg_id: int):
+    """Demote a rule_proposal message back to a regular chat message and delete the rule."""
+    msg = store.get_by_id(msg_id)
+    if not msg:
+        return JSONResponse({"error": "message not found"}, status_code=404)
+    if msg.get("type") != "rule_proposal":
+        return JSONResponse({"error": "not a rule proposal"}, status_code=400)
+    meta = msg.get("metadata", {})
+    rule_id = meta.get("rule_id")
+    if rule_id is not None:
+        rules.delete(int(rule_id))
+    text = meta.get("text", msg.get("text", ""))
     updated = store.update_message(msg_id, {
         "type": "chat",
-        "text": plain_text,
+        "text": text,
         "metadata": {},
     })
     if updated:
-        # Broadcast the updated message to all clients
         payload = json.dumps({"type": "edit", "message": updated})
         dead = set()
         for client in list(ws_clients):
@@ -1458,6 +1791,55 @@ async def set_agent_role(agent_name: str, request: Request):
     return JSONResponse({"ok": True, "role": role})
 
 
+# --- Rules API ---
+
+@app.get("/api/rules")
+async def get_rules():
+    """Get all rules (all states)."""
+    return JSONResponse(rules.list_all())
+
+
+@app.get("/api/rules/active")
+async def get_active_rules():
+    """Get compact active rules for agent injection."""
+    data = rules.active_list()
+    data["refresh_interval"] = room_settings.get("rules_refresh_interval", 10)
+    return JSONResponse(data)
+
+
+@app.post("/api/rules/remind")
+async def remind_agents():
+    """Set remind flag — agents get rules on next trigger."""
+    rules.set_remind()
+    remind_data = json.dumps({"type": "rules_remind", "data": {}})
+    for client in list(ws_clients):
+        try:
+            await client.send_text(remind_data)
+        except Exception:
+            pass
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/rules/agent_sync/{agent_name}")
+async def report_rule_sync(agent_name: str, request: Request):
+    """Wrapper reports that an agent has seen rules at a given epoch."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid json"}, status_code=400)
+    epoch = body.get("epoch", 0)
+    rules.report_agent_sync(agent_name, epoch)
+    # Clear remind flag once any agent has seen the updated rules
+    rules.clear_remind()
+    return JSONResponse({"ok": True})
+
+
+@app.get("/api/rules/freshness")
+async def get_rules_freshness():
+    """Get per-agent sync status."""
+    return JSONResponse(rules.agent_freshness())
+
+
 @app.post("/api/register")
 async def register_agent(request: Request):
     """Wrapper calls this to register a new agent instance."""
@@ -1685,6 +2067,302 @@ async def open_path(body: dict):
 
 
 # Serve uploaded images
+# --- Sessions API ---
+
+@app.get("/api/sessions/templates")
+async def get_session_templates():
+    if not session_store:
+        return JSONResponse({"error": "sessions not configured"}, status_code=500)
+    return JSONResponse(session_store.get_templates())
+
+
+@app.get("/api/sessions/active")
+async def get_active_session(channel: str = "general"):
+    if not session_engine:
+        return JSONResponse(None)
+    session = session_engine.get_active(channel)
+    return JSONResponse(session)
+
+
+@app.get("/api/sessions/active-all")
+async def get_all_active_sessions():
+    if not session_engine:
+        return JSONResponse([])
+    return JSONResponse(session_engine.list_active())
+
+
+@app.post("/api/sessions/start")
+async def start_session(request: Request):
+    if not session_engine or not session_store:
+        return JSONResponse({"error": "sessions not configured"}, status_code=500)
+    body = await request.json()
+    template_id = body.get("template_id", "")
+    draft_message_id = body.get("draft_message_id")
+    channel = body.get("channel", "general")
+    cast = body.get("cast", {})
+    goal = body.get("goal", "")
+    started_by = body.get("started_by", "user")
+
+    # If running from a draft, load the inline template from message metadata
+    tmpl = None
+    if draft_message_id:
+        draft_msg = store.get_by_id(int(draft_message_id))
+        if not draft_msg:
+            return JSONResponse({"error": "draft message not found"}, status_code=404)
+        meta = draft_msg.get("metadata", {})
+        if not meta.get("valid"):
+            return JSONResponse({"error": "draft is not valid"}, status_code=400)
+        tmpl = meta.get("template")
+        if not tmpl:
+            return JSONResponse({"error": "draft has no template"}, status_code=400)
+        # Register as a temporary template
+        template_id = tmpl.get("id", f"draft-{draft_message_id}")
+        tmpl["id"] = template_id
+        tmpl["is_custom"] = True
+        session_store._templates[template_id] = tmpl
+
+    # Validate template exists
+    if not tmpl:
+        tmpl = session_store.get_template(template_id)
+    if not tmpl:
+        return JSONResponse({"error": f"unknown template: {template_id}"}, status_code=400)
+
+    # Auto-fill cast from available agents if not fully provided
+    if not cast:
+        online = registry.get_active_names() if registry else []
+        roles = tmpl.get("roles", [])
+        cast = _auto_cast(roles, online, started_by)
+        if not cast:
+            return JSONResponse(
+                {"error": "not enough agents online to fill all roles"},
+                status_code=400,
+            )
+
+    session = session_engine.start_session(template_id, channel, cast, started_by, goal)
+    if not session:
+        return JSONResponse({"error": "could not start session (one may already be active)"}, status_code=409)
+
+    # Add start banner to chat (only after confirmed success)
+    store.add(
+        sender="system",
+        text=f"Session started: {tmpl.get('name', template_id)}",
+        msg_type="session_start",
+        channel=channel,
+        metadata={"template_id": template_id, "goal": goal, "session_id": session["id"]},
+    )
+    session_engine.emit_current_phase_banner(session)
+
+    return JSONResponse(session)
+
+
+@app.post("/api/sessions/{session_id}/end")
+async def end_session(session_id: int):
+    if not session_engine:
+        return JSONResponse({"error": "sessions not configured"}, status_code=500)
+    session = session_engine.end_session(session_id)
+    if not session:
+        return JSONResponse({"error": "session not found or already ended"}, status_code=404)
+
+    # Banner is added by _on_session_change("interrupt", ...) callback
+    return JSONResponse(session)
+
+
+@app.post("/api/sessions/request-draft")
+async def request_session_draft(request: Request):
+    """Ask an agent to design a session template. Called by the 'Design a session' UI."""
+    body = await request.json()
+    agent_name = body.get("agent", "").strip()
+    description = body.get("description", "").strip()
+    channel = body.get("channel", "general")
+    sender = body.get("sender", "user")
+    if not agent_name or not description:
+        return JSONResponse({"error": "agent and description required"}, status_code=400)
+
+    mention_str = f"@{agent_name}"
+    store.add(
+        "system",
+        f"Requested session draft from {mention_str}. Wait for a proposal.",
+        channel=channel,
+    )
+    store.add(
+        sender,
+        f"{mention_str} Design a session workflow for: **{description}**\n\n"
+        "Respond with a single chat message containing a fenced JSON code block with this exact structure:\n"
+        "```session\n"
+        '{"name": "...", "description": "...", "roles": ["role1", "role2", ...], '
+        '"phases": [{"name": "...", "participants": ["role1"], "prompt": "...", "is_output": false}, ...]}\n'
+        "```\n"
+        "Rules: max 6 roles, max 6 phases, max 4 participants per phase, max 200 chars per prompt. "
+        "Mark exactly one phase as `is_output: true` (the final deliverable). "
+        f"Keep it focused and sequential. Use the chat_send tool to post your response in the #{channel} channel. "
+        "Do NOT respond only in your terminal.",
+        channel=channel,
+        msg_type="session_request",
+        metadata={"session_request": True, "mentions": [f"@{agent_name}"], "request": description},
+    )
+    return JSONResponse({"ok": True})
+
+
+@app.post("/api/sessions/save-draft")
+async def save_draft(request: Request):
+    if not session_store:
+        return JSONResponse({"error": "sessions not configured"}, status_code=500)
+    body = await request.json()
+    msg_id = body.get("message_id")
+    if not msg_id:
+        return JSONResponse({"error": "message_id required"}, status_code=400)
+    msg = store.get_by_id(int(msg_id))
+    if not msg:
+        return JSONResponse({"error": "message not found"}, status_code=404)
+    meta = msg.get("metadata", {})
+    if not meta.get("valid"):
+        return JSONResponse({"error": "draft is not valid"}, status_code=400)
+    tmpl = meta.get("template")
+    if not tmpl:
+        return JSONResponse({"error": "no template in draft"}, status_code=400)
+
+    tmpl.setdefault("id", f"custom-{msg_id}")
+    session_store.save_custom_template(tmpl)
+    return JSONResponse({"ok": True, "template_id": tmpl["id"]})
+
+
+@app.delete("/api/sessions/templates/{template_id}")
+async def delete_session_template(template_id: str):
+    if not session_store:
+        return JSONResponse({"error": "sessions not configured"}, status_code=500)
+    deleted = session_store.delete_custom_template(template_id)
+    if not deleted:
+        return JSONResponse({"error": "template not found or not custom"}, status_code=404)
+    return JSONResponse({"ok": True, "template_id": template_id})
+
+
+def _auto_cast(roles: list[str], online_agents: list[str], started_by: str) -> dict:
+    """Auto-assign roles to available agents. Returns empty dict if not enough agents."""
+    cast = {}
+    available = list(online_agents)
+
+    for role in roles:
+        if not available:
+            # Reuse agents if we run out (one agent, multiple roles)
+            available = list(online_agents)
+        if not available:
+            return {}
+        agent = available.pop(0)
+        cast[role] = agent
+
+    return cast
+
+
+# --- Version check (GitHub release notifier) ---
+
+_version_cache: dict = {"data": None, "fetched_at": 0.0}
+_VERSION_CACHE_TTL = 1800  # 30 minutes
+
+
+def _read_local_version() -> str:
+    """Read version from VERSION file in project root."""
+    vfile = Path(__file__).parent / "VERSION"
+    try:
+        return vfile.read_text().strip()
+    except Exception:
+        return ""
+
+
+def _detect_install_kind() -> str:
+    """Detect how this copy was installed: official_git, fork, or unknown."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "remote", "get-url", "origin"],
+            capture_output=True, text=True, timeout=5,
+            cwd=Path(__file__).parent,
+        )
+        url = result.stdout.strip().lower()
+        if "bcurts/agentchattr" in url:
+            return "official_git"
+        elif url:
+            return "fork"
+    except Exception:
+        pass
+    return "unknown"
+
+
+def _fetch_latest_release() -> dict | None:
+    """Fetch latest release from GitHub API, with 30-min cache."""
+    import time
+    import urllib.request
+
+    now = time.time()
+    if _version_cache["data"] and (now - _version_cache["fetched_at"]) < _VERSION_CACHE_TTL:
+        return _version_cache["data"]
+
+    try:
+        req = urllib.request.Request(
+            "https://api.github.com/repos/bcurts/agentchattr/releases/latest",
+            headers={"Accept": "application/vnd.github+json", "User-Agent": "agentchattr"},
+        )
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            data = json.loads(resp.read())
+            result = {
+                "tag": data.get("tag_name", ""),
+                "url": data.get("html_url", ""),
+            }
+            _version_cache["data"] = result
+            _version_cache["fetched_at"] = now
+            return result
+    except Exception:
+        return _version_cache.get("data")
+
+
+def _compare_versions(current: str, latest_tag: str) -> str:
+    """Compare version strings. Returns 'behind', 'current', or 'unknown'."""
+    # Strip leading 'v' from tag
+    latest = latest_tag.lstrip("v")
+    if not current or not latest:
+        return "unknown"
+    try:
+        from packaging.version import Version
+        if Version(current) < Version(latest):
+            return "behind"
+        return "current"
+    except Exception:
+        return "unknown"
+
+
+@app.get("/api/version_check")
+async def version_check():
+    """Check for newer releases on GitHub."""
+    current = _read_local_version()
+    loop = asyncio.get_event_loop()
+    release = await loop.run_in_executor(None, _fetch_latest_release)
+
+    if not release or not release.get("tag"):
+        return JSONResponse({"current": current, "latest": "", "state": "unknown", "url": ""})
+
+    latest_tag = release["tag"]
+    install_kind = _detect_install_kind()
+    comparison = _compare_versions(current, latest_tag)
+
+    if comparison == "behind":
+        if install_kind == "official_git":
+            state = "update_available"
+        elif install_kind == "fork":
+            state = "upstream_update"
+        else:
+            state = "unknown"
+    elif comparison == "current":
+        state = "current"
+    else:
+        state = "unknown"
+
+    return JSONResponse({
+        "current": current,
+        "latest": latest_tag,
+        "state": state,
+        "url": release.get("url", ""),
+    })
+
+
 @app.get("/uploads/{filename}")
 async def serve_upload(filename: str):
     upload_dir = Path(config.get("images", {}).get("upload_dir", "./uploads"))

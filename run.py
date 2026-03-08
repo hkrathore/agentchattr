@@ -36,10 +36,10 @@ def main():
     configure(config, session_token=session_token)
 
     # Share stores with the MCP bridge
-    from app import store, decisions, summaries, jobs, room_settings, registry, router as app_router, agents as app_agents
+    from app import store, rules, summaries, jobs, room_settings, registry, router as app_router, agents as app_agents, session_engine, session_store
     import mcp_bridge
     mcp_bridge.store = store
-    mcp_bridge.decisions = decisions
+    mcp_bridge.rules = rules
     mcp_bridge.summaries = summaries
     mcp_bridge.jobs = jobs
     mcp_bridge.room_settings = room_settings
@@ -91,6 +91,9 @@ def main():
     @app.on_event("startup")
     async def on_startup():
         set_event_loop(asyncio.get_running_loop())
+        # Resume any sessions that were active before restart
+        if session_engine:
+            session_engine.resume_active_sessions()
 
     # Run web server
     import uvicorn
