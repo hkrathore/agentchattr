@@ -84,12 +84,16 @@ header {
     box-shadow: 0 1px 8px rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
     z-index: 2;
+    min-width: 0;
 }
 
 .header-left {
     display: flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
+    flex: 1 1 auto;
+    overflow: hidden;
 }
 
 .header-logo {
@@ -150,6 +154,8 @@ header h1 {
     display: flex;
     align-items: center;
     gap: 12px;
+    min-width: 0;
+    flex-shrink: 1;
 }
 
 #agent-status {
@@ -490,6 +496,7 @@ main#timeline {
     display: flex;
     flex-direction: column;
     gap: 6px;
+    min-width: 0;
 }
 
 .message {
@@ -501,6 +508,7 @@ main#timeline {
     position: relative;
     max-width: 100%;
     contain: layout style;
+    min-width: 0;
 }
 
 .message.self {
@@ -626,6 +634,7 @@ main#timeline {
     min-width: 80px;
     overflow-wrap: break-word;
     position: relative;
+    min-width: 0;
 }
 
 .message.self .chat-bubble {
@@ -1281,9 +1290,7 @@ main#timeline {
 }
 
 #jobs-panel.hidden {
-    margin-right: calc(-1 * var(--panel-w));
-    opacity: 0;
-    pointer-events: none;
+    display: none;
 }
 
 .jobs-grip {
@@ -2505,9 +2512,7 @@ body.archive-no-select * {
 }
 
 #decisions-panel.hidden {
-    margin-right: calc(-1 * var(--panel-w));
-    opacity: 0;
-    pointer-events: none;
+    display: none;
 }
 
 /* Full-height drag grip on left edge */
@@ -3833,6 +3838,7 @@ footer {
     box-shadow: 0 -1px 8px rgba(0, 0, 0, 0.3);
     flex-shrink: 0;
     z-index: 2;
+    min-width: 0;
 }
 
 /* --- Mention toggles --- */
@@ -3921,6 +3927,7 @@ footer {
     display: flex;
     gap: 8px;
     align-items: flex-end;
+    min-width: 0;
 }
 
 .sender-label {
@@ -3946,6 +3953,7 @@ footer {
     min-height: 40px;
     max-height: 120px;
     transition: border-color 0.2s;
+    min-width: 0;
 }
 
 #input:focus {
@@ -4147,3 +4155,76 @@ footer {
     background: #3a3a55;
 }
 
+@media (max-width: 700px) {
+    header {
+        padding: 10px 12px;
+        gap: 8px;
+    }
+
+    .header-left {
+        gap: 8px;
+    }
+
+    header h1 {
+        font-size: 15px;
+    }
+
+    .discord-pill,
+    .subtitle,
+    .sender-label,
+    .input-hint {
+        display: none;
+    }
+
+    #agent-status {
+        gap: 8px;
+        max-width: 42vw;
+    }
+
+    .status-pill {
+        padding: 4px 8px;
+        font-size: 11px;
+    }
+
+    .settings-btn {
+        padding: 5px 6px;
+    }
+
+    main#timeline {
+        padding: 12px 8px;
+    }
+
+    .message {
+        padding-left: 4px;
+        padding-right: 4px;
+        gap: 6px;
+    }
+
+    .chat-bubble {
+        max-width: calc(100vw - 76px);
+        padding: 8px 12px;
+    }
+
+    footer {
+        padding: 10px 12px;
+    }
+
+    #input-row {
+        gap: 6px;
+    }
+
+    #input {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+
+    #mic {
+        padding-left: 8px;
+        padding-right: 8px;
+    }
+
+    #send {
+        padding-left: 14px;
+        padding-right: 14px;
+    }
+}

@@ -291,6 +291,7 @@ Edit `config.toml` to customize agents, ports, and routing:
 [server]
 port = 8300                 # web UI port
 host = "127.0.0.1"
+trusted_origins = []        # optional HTTPS origins for reverse proxy / Tailscale access
 
 [agents.claude]
 command = "claude"          # CLI command (must be on PATH)
@@ -426,6 +427,31 @@ agentchattr is designed for **localhost use only** and includes several protecti
 The session token is displayed in the terminal on startup and is only accessible to processes on the same machine.
 
 > **`--allow-network` warning:** Network mode binds to a LAN IP, which exposes the server to your local network over unencrypted HTTP. Anyone on the same network can sniff the session token and gain full access — including the ability to @mention agents and trigger tool execution. If agents are running with auto-approve flags, this effectively grants remote code execution on your machine. **Only use `--allow-network` on a trusted home network. Never on public or shared WiFi.**
+
+### Android access via Tailscale
+
+If you want to open agentchattr from your Android phone while it keeps running only on your local machine, use Tailscale instead of binding the app to a network interface.
+
+1. Install Tailscale on the host machine and your Android phone, then sign in on both.
+2. Keep agentchattr bound to `127.0.0.1` in `config.toml`.
+3. Start a private HTTPS endpoint through your tailnet:
+   ```bash
+   tailscale serve --bg 8300
+   ```
+4. Find the served URL:
+   ```bash
+   tailscale serve status
+   ```
+5. Add that exact HTTPS origin to `trusted_origins` in `config.toml`:
+   ```toml
+   [server]
+   host = "127.0.0.1"
+   port = 8300
+   trusted_origins = ["https://your-machine.your-tailnet.ts.net"]
+   ```
+6. Restart agentchattr and open the Tailscale URL from your Android phone while Tailscale is enabled.
+
+This preserves the local-only bind and extends browser access only to the exact trusted HTTPS origins you configure.
 
 ## Community
 

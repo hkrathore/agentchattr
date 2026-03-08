@@ -21,6 +21,7 @@ import mcp_bridge
 import mcp_proxy
 import wrapper
 import wrapper_unix
+from config_loader import load_config
 if sys.platform == "win32":
     import wrapper_windows
 from mcp.server.fastmcp import Context
@@ -63,6 +64,39 @@ class RuntimeRegistryTests(unittest.TestCase):
             self.assertEqual(resolved_first["name"], "claude-1")
             self.assertEqual(resolved_first["identity_id"], first["identity_id"])
             self.assertEqual(resolved_first["epoch"], 1)
+
+
+class ConfigLoaderTests(unittest.TestCase):
+    def test_load_config_merges_local_trusted_origins(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "config.toml").write_text(
+                """
+[server]
+port = 8300
+host = "127.0.0.1"
+trusted_origins = ["https://base.example.com"]
+""".strip()
+            )
+            (root / "config.local.toml").write_text(
+                """
+[server]
+trusted_origins = [
+  "https://phone.example.ts.net",
+  "https://base.example.com",
+]
+""".strip()
+            )
+
+            cfg = load_config(root)
+
+            self.assertEqual(
+                cfg["server"]["trusted_origins"],
+                [
+                    "https://base.example.com",
+                    "https://phone.example.ts.net",
+                ],
+            )
 
 
 class McpBridgeAuthTests(unittest.TestCase):
@@ -172,6 +206,27 @@ class AppAuthEndpointTests(unittest.TestCase):
 
         self.assertEqual(resp.status_code, 200)
         self.assertIsNone(self.registry.get_instance(inst["name"]))
+
+
+class AppOriginConfigTests(unittest.TestCase):
+    def test_build_allowed_origins_includes_localhost_and_configured_trusted_origins(self):
+        allowed = app._build_allowed_origins(
+            {
+                "server": {
+                    "port": 8300,
+                    "trusted_origins": [
+                        "https://hemants-mac-mini.tail-scale.ts.net/",
+                        " https://agent.example.com ",
+                        "",
+                    ],
+                }
+            }
+        )
+
+        self.assertIn("http://127.0.0.1:8300", allowed)
+        self.assertIn("http://localhost:8300", allowed)
+        self.assertIn("https://hemants-mac-mini.tail-scale.ts.net", allowed)
+        self.assertIn("https://agent.example.com", allowed)
 
 
 class WrapperLaunchTests(unittest.TestCase):
