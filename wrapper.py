@@ -5,6 +5,7 @@ Usage:
     python wrapper.py codex
     python wrapper.py gemini
     python wrapper.py kimi
+    python wrapper.py qwen
 
 Cross-platform:
   - Windows: injects keystrokes via Win32 WriteConsoleInput (wrapper_windows.py)
@@ -141,9 +142,14 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
         "mcp_flag": "--mcp-config-file",
         "mcp_transport": "http",
     },
+    "kilo": {
+        "mcp_inject": "env_content",
+        "mcp_env_var": "KILO_CONFIG_CONTENT",
+        "mcp_transport": "http",
+    },
 }
 
-_VALID_INJECT_MODES = {"settings_file", "env", "flag", "proxy_flag"}
+_VALID_INJECT_MODES = {"settings_file", "env", "flag", "proxy_flag", "env_content"}
 
 
 def _resolve_mcp_inject(agent: str, agent_cfg: dict) -> dict:
@@ -230,6 +236,18 @@ def _apply_mcp_inject(
             server_url, token=token, project_servers=project_servers,
         )
         launch_args = [flag, str(settings_path)]
+
+    elif mode == "env_content":
+        # Build JSON config content and set it as an env var directly (no file written).
+        # Used by Kilo CLI which reads KILO_CONFIG_CONTENT at startup.
+        env_var = inject_cfg.get("mcp_env_var")
+        if not env_var:
+            raise ValueError("mcp_inject = 'env_content' requires mcp_env_var")
+        entry: dict = {"type": "remote", "url": server_url, "enabled": True}
+        if token:
+            entry["headers"] = {"Authorization": f"Bearer {token}"}
+        payload = {"mcp": {SERVER_NAME: entry}}
+        inject_env[env_var] = json.dumps(payload)
 
     elif mode == "proxy_flag":
         # Pass the proxy URL as CLI flags (e.g. codex -c ...)
@@ -825,6 +843,7 @@ def main():
         strip_env=list(strip_vars),
         pid_holder=_agent_pid,
         inject_env=inject_env,
+        inject_delay=agent_cfg.get("inject_delay", 0.3),
     )
     if sys.platform != "win32":
         run_kwargs["session_name"] = unix_session_name

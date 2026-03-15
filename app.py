@@ -18,6 +18,7 @@ from store import MessageStore
 from rules import RuleStore
 from summaries import SummaryStore
 from jobs import JobStore
+from schedules import ScheduleStore, parse_schedule_spec
 from router import Router
 from agents import AgentTrigger
 from registry import RuntimeRegistry
@@ -33,6 +34,7 @@ store: MessageStore | None = None
 rules: RuleStore | None = None
 summaries: SummaryStore | None = None
 jobs: JobStore | None = None
+schedules: ScheduleStore | None = None
 router: Router | None = None
 agents: AgentTrigger | None = None
 registry: RuntimeRegistry | None = None
@@ -52,6 +54,7 @@ room_settings: dict = {
     "channels": ["general"],
     "history_limit": "all",
     "contrast": "normal",
+    "custom_roles": [],
 }
 
 # Channel validation
@@ -238,7 +241,7 @@ def _install_security_middleware(token: str, cfg: dict):
 
 
 def configure(cfg: dict, session_token: str = ""):
-    global store, rules, summaries, jobs, router, agents, registry, session_store, session_engine, config
+    global store, rules, summaries, jobs, schedules, router, agents, registry, session_store, session_engine, config
     config = cfg
     # --- Security: store the session token and install middleware ---
     _install_security_middleware(session_token, cfg)
@@ -275,6 +278,9 @@ def configure(cfg: dict, session_token: str = ""):
 
     jobs = JobStore(str(jobs_path))
     jobs.on_change(_on_job_change)
+
+    schedules = ScheduleStore(str(Path(data_dir) / "schedules.json"))
+    schedules.on_change(_on_schedule_change)
 
     max_hops = cfg.get("routing", {}).get("max_agent_hops", 4)
 
@@ -458,6 +464,41 @@ def configure(cfg: dict, session_token: str = ""):
 
     threading.Thread(target=_background_checks, daemon=True).start()
 
+    # --- Schedule runner: fires due scheduled prompts every 30s ---
+    def _schedule_runner():
+        import time as _time
+        while True:
+            _time.sleep(30)
+            try:
+                if not schedules:
+                    continue
+                due = schedules.run_due()
+                for s in due:
+                    prompt = s.get("prompt", "")
+                    targets = s.get("targets", [])
+                    channel = s.get("channel", "general")
+                    if not prompt or not targets:
+                        schedules.mark_run(s["id"])
+                        continue
+                    sender = s.get("created_by", "user")
+                    mention_str = " ".join(f"@{t}" for t in targets)
+                    full_text = f"{mention_str} {prompt}" if mention_str else prompt
+                    # store.add triggers _handle_new_message via callback,
+                    # which routes @mentions to agents — no manual trigger needed.
+                    store.add(
+                        sender,
+                        full_text,
+                        channel=channel,
+                    )
+                    if s.get("one_shot"):
+                        schedules.delete(s["id"])
+                    else:
+                        schedules.mark_run(s["id"])
+            except Exception:
+                log.exception("schedule runner error")
+
+    threading.Thread(target=_schedule_runner, daemon=True).start()
+
 
 # --- Store → WebSocket bridge ---
 
@@ -511,6 +552,20 @@ def _on_job_change(action: str, data: dict):
     except RuntimeError:
         pass
     asyncio.run_coroutine_threadsafe(broadcast_job(action, data), _event_loop)
+
+
+def _on_schedule_change(action: str, schedule: dict):
+    """Called from any thread when a schedule changes."""
+    if _event_loop is None:
+        return
+    try:
+        loop = asyncio.get_running_loop()
+        if loop is _event_loop:
+            asyncio.ensure_future(broadcast_schedule(action, schedule))
+            return
+    except RuntimeError:
+        pass
+    asyncio.run_coroutine_threadsafe(broadcast_schedule(action, schedule), _event_loop)
 
 
 def _on_session_change(action: str, session: dict):
@@ -617,10 +672,12 @@ async def _handle_new_message(msg: dict):
     is_agent_session_draft = bool(draft_match and sender in known_agents)
     is_hidden_session_request = msg_type == "session_request"
 
+    is_agent_continue = (stripped == "/continue" and sender in known_agents)
     suppress_broadcast = (
         is_broadcast_cmd
         or is_hidden_session_request
         or is_agent_session_draft
+        or is_agent_continue
     )
 
     if not suppress_broadcast:
@@ -637,6 +694,9 @@ async def _handle_new_message(msg: dict):
 
     # Check for slash commands — use stripped text (sans @mentions)
     if stripped == "/continue":
+        if sender in known_agents:
+            store.add("system", f"Loop guard: only humans can /continue. {sender} tried to self-resume.", channel=channel)
+            return
         router.continue_routing(channel)
         store.add("system", f"Routing resumed by {sender}.", channel=channel)
         await broadcast_status()
@@ -897,6 +957,17 @@ async def broadcast_job(action: str, data: dict):
     ws_clients.difference_update(dead)
 
 
+async def broadcast_schedule(action: str, schedule: dict):
+    payload = json.dumps({"type": "schedule", "action": action, "data": schedule})
+    dead = set()
+    for client in list(ws_clients):
+        try:
+            await client.send_text(payload)
+        except Exception:
+            dead.add(client)
+    ws_clients.difference_update(dead)
+
+
 async def broadcast_session(action: str, session: dict):
     payload = json.dumps({"type": "session", "action": action, "data": session})
     dead = set()
@@ -987,6 +1058,9 @@ async def websocket_endpoint(websocket: WebSocket):
 
     # Send jobs
     await websocket.send_text(json.dumps({"type": "jobs", "data": jobs.list_all()}))
+
+    # Send schedules
+    await websocket.send_text(json.dumps({"type": "schedules", "data": schedules.list_all()}))
 
     # Send pending instances (so late-connecting browsers still see the naming lightbox)
     if registry:
@@ -1202,6 +1276,11 @@ async def websocket_endpoint(websocket: WebSocket):
                             room_settings["history_limit"] = max(1, min(val_int, 10000))
                         except (ValueError, TypeError):
                             pass
+                if "custom_roles" in new and isinstance(new["custom_roles"], list):
+                    room_settings["custom_roles"] = [
+                        str(r).strip()[:20] for r in new["custom_roles"]
+                        if isinstance(r, str) and r.strip()
+                    ][:20]
                 _save_settings()
                 await broadcast_settings()
 
@@ -1421,6 +1500,60 @@ async def delete_hat(agent_name: str):
 
 
 # --- Jobs API ---
+
+@app.get("/api/schedules")
+async def get_schedules():
+    return schedules.list_all()
+
+
+@app.post("/api/schedules")
+async def create_schedule(request: Request):
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    targets = body.get("targets", [])
+    channel = body.get("channel", "general")
+    spec = body.get("spec", "")
+    one_shot = body.get("one_shot", False)
+    send_at_date = body.get("send_at_date", "")  # "YYYY-MM-DD" for one-shot
+    created_by = body.get("created_by", "user")
+    if not prompt or not targets or not spec:
+        return JSONResponse({"error": "prompt, targets, and spec are required"}, status_code=400)
+    interval_sec, daily_at = parse_schedule_spec(spec)
+    if interval_sec is None:
+        return JSONResponse({"error": f"Invalid schedule spec: {spec}"}, status_code=400)
+    # For one-shot, compute exact send_at timestamp from date + daily_at time
+    send_at = None
+    if one_shot and daily_at and send_at_date:
+        import datetime as _dt
+        try:
+            dt = _dt.datetime.strptime(f"{send_at_date} {daily_at}", "%Y-%m-%d %H:%M")
+            send_at = dt.timestamp()
+        except ValueError:
+            pass
+    s = schedules.create(
+        prompt=prompt, targets=targets, channel=channel,
+        interval_seconds=interval_sec, daily_at=daily_at,
+        one_shot=one_shot, send_at=send_at,
+        created_by=created_by,
+    )
+    return JSONResponse(s)
+
+
+@app.delete("/api/schedules/{schedule_id}")
+async def delete_schedule(schedule_id: str):
+    removed = schedules.delete(schedule_id)
+    if not removed:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"ok": True})
+
+
+@app.patch("/api/schedules/{schedule_id}/toggle")
+async def toggle_schedule(schedule_id: str):
+    result = schedules.toggle(schedule_id)
+    if not result:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse(result)
+
 
 @app.get("/api/jobs")
 async def get_jobs(channel: str = "", status: str = ""):

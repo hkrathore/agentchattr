@@ -1,7 +1,7 @@
 """MCP server for agent chat tools — runs alongside the web server.
 
 Serves two transports for compatibility:
-  - streamable-http on port 8200 (Claude Code, Codex)
+  - streamable-http on port 8200 (Claude Code, Codex, Qwen)
   - SSE on port 8201 (Gemini)
 """
 
@@ -55,13 +55,15 @@ _MCP_INSTRUCTIONS = (
     "  - All Anthropic products (Claude Code, claude-cli, etc.) → base: \"claude\"\n"
     "  - All OpenAI products (Codex CLI, codex, chatgpt-cli, etc.) → base: \"codex\"\n"
     "  - All Google products (Gemini CLI, gemini-cli, aistudio, etc.) → base: \"gemini\"\n"
+    "  - All Alibaba/Qwen products (Qwen Code, qwen-cli, etc.) → base: \"qwen\"\n"
+    "  - All Kilo products (Kilo CLI, kilocode, etc.) → base: \"kilo\"\n"
     "  - Humans use their own name (e.g. \"user\")\n"
     "Do NOT use your CLI tool name (e.g. \"gemini-cli\", \"claude-code\") — use the base name above.\n"
     "IMPORTANT: When multiple instances run, the server renames slot 1 (e.g. \"claude\" → \"claude-1\"). "
     "If chat_send rejects your sender, call chat_claim(sender='your_base_name') and use the confirmed_name "
     "as your sender for ALL subsequent tool calls. The confirmed_name overrides the base name.\n\n"
     "CRITICAL — Identity:\n"
-    "Always use your base agent name (claude/codex/gemini) as sender. "
+    "Always use your base agent name (claude/codex/gemini/qwen/kilo) as sender. "
     "Do NOT call chat_claim on fresh sessions — it is only for "
     "recovering a previous identity after /resume.\n\n"
     "CRITICAL — Always Respond In Chat:\n"
@@ -100,8 +102,9 @@ _MCP_INSTRUCTIONS = (
     "Do NOT summarize just because a task was discussed or abandoned — wait for the 20-message threshold or a human request. "
     "Keep summaries factual and concise (under 150 words) — focus on decisions made, tasks completed, and open questions.\n\n"
     "Jobs are bounded work conversations — like Slack threads with status tracking. "
-    "When you are triggered with job_id=N, use chat_read(job_id=N) to read the job conversation, "
-    "then use chat_send(job_id=N, message='...') to reply within it. "
+    "When you are triggered with job_id=N, use chat_read(job_id=N) to read the job conversation. "
+    "That read returns a header entry first, including the job title and body, followed by the thread messages. "
+    "Then use chat_send(job_id=N, message='...') to reply within it. "
     "Job conversations are separate from the main timeline — your response should go to the job, not the channel.\n\n"
     "CRITICAL — Proposing Jobs:\n"
     "Agents must ONLY propose jobs using chat_propose_job when explicitly asked by the user, OR when the request is a clearly 'scoped task'. "
@@ -526,17 +529,37 @@ def chat_read(
     - Pass since_id to override and read from a specific point.
     - Omit sender to always get the last `limit` messages (no cursor).
     - Pass channel to filter by channel name (default: all channels).
-    - Pass job_id to read messages from a specific job."""
+    - Pass job_id to read a specific job. Job reads return a header entry first,
+      including title and body, followed by the thread messages."""
     sender, err = _resolve_tool_identity(sender, ctx, field_name="sender", required=False)
     if err:
         return err
 
-    # Job-scoped read: return messages from the job store
+    # Job-scoped read: return job metadata plus the thread messages
     if job_id and jobs:
+        job = jobs.get(job_id)
         msgs = jobs.get_messages(job_id)
-        if msgs is None:
+        if job is None or msgs is None:
             return f"Error: job #{job_id} not found."
-        out = []
+        title = (job.get("title") or "").strip()
+        body = (job.get("body") or "").strip()
+        header_text = f"Job: {title}" if title else f"Job #{job_id}"
+        if body:
+            header_text += f"\nDescription: {body}"
+        out = [{
+            "id": -1,
+            "sender": "system",
+            "text": header_text,
+            "type": "job_header",
+            "time": "",
+            "job_id": job_id,
+            "title": title,
+            "body": body,
+            "status": job.get("status", ""),
+            "channel": job.get("channel", ""),
+            "created_by": job.get("created_by", ""),
+            "assignee": job.get("assignee", ""),
+        }]
         for m in msgs:
             entry = {"id": m["id"], "sender": m["sender"], "text": m["text"],
                      "time": m.get("time", ""), "job_id": job_id}
@@ -547,7 +570,7 @@ def chat_read(
             if m.get("resolved"):
                 entry["resolved"] = m["resolved"]
             out.append(entry)
-        return json.dumps(out, ensure_ascii=False) if out else "No messages in this job yet."
+        return json.dumps(out, ensure_ascii=False)
 
     ch = channel if channel else None
     if since_id:
@@ -754,7 +777,7 @@ def chat_decision(
 def chat_set_hat(sender: str, svg: str, target: str = "", ctx: Context | None = None) -> str:
     """Set your avatar hat. Pass an SVG string (viewBox "0 0 32 16", max 5KB).
     The hat will appear above your avatar in chat. To remove, users can drag it to the trash.
-    Color context for design — chat bg is dark (#0f0f17), avatar colors: claude=#da7756 (coral), codex=#10a37f (green), gemini=#4285f4 (blue).
+    Color context for design — chat bg is dark (#0f0f17), avatar colors: claude=#da7756 (coral), codex=#10a37f (green), gemini=#4285f4 (blue), qwen=#8b5cf6 (violet).
     Optional: pass target to set a hat on another agent (e.g. target="qwen")."""
     sender, err = _resolve_tool_identity(sender, ctx, field_name="sender", required=True)
     if err:
@@ -866,7 +889,7 @@ def _create_server(port: int) -> FastMCP:
     return server
 
 
-mcp_http = _create_server(8200)  # streamable-http for Claude/Codex
+mcp_http = _create_server(8200)  # streamable-http for Claude/Codex/Qwen
 mcp_sse = _create_server(8201)   # SSE for Gemini
 
 # Keep backward compat — run.py references mcp_bridge.store

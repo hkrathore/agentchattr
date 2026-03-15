@@ -23,6 +23,8 @@ let activeChannel = localStorage.getItem('agentchattr-channel') || 'general';
 let channelList = ['general'];
 let channelUnread = {};  // { channelName: count }
 let agentHats = {};  // { agent_name: svg_string }
+window.customRoles = [];  // saved custom roles from settings
+let schedulesList = [];  // array of schedule objects from server
 
 // Expose globals that extracted modules (sessions.js, jobs.js) read via window.*
 // Using defineProperty so live values are always returned.
@@ -159,6 +161,8 @@ const BRAND_AVATARS = {
     codex: `<svg viewBox="0 0 16 16" fill="white"><path d="M14.949 6.547a3.94 3.94 0 0 0-.348-3.273 4.11 4.11 0 0 0-4.4-1.934A4.1 4.1 0 0 0 8.423.2 4.15 4.15 0 0 0 6.305.086a4.1 4.1 0 0 0-1.891.948 4.04 4.04 0 0 0-1.158 1.753 4.1 4.1 0 0 0-1.563.679A4 4 0 0 0 .554 4.72a3.99 3.99 0 0 0 .502 4.731 3.94 3.94 0 0 0 .346 3.274 4.11 4.11 0 0 0 4.402 1.933c.382.425.852.764 1.377.995.526.231 1.095.35 1.67.346 1.78.002 3.358-1.132 3.901-2.804a4.1 4.1 0 0 0 1.563-.68 4 4 0 0 0 1.14-1.253 3.99 3.99 0 0 0-.506-4.716m-6.097 8.406a3.05 3.05 0 0 1-1.945-.694l.096-.054 3.23-1.838a.53.53 0 0 0 .265-.455v-4.49l1.366.778q.02.011.025.035v3.722c-.003 1.653-1.361 2.992-3.037 2.996m-6.53-2.75a2.95 2.95 0 0 1-.36-2.01l.095.057L5.29 12.09a.53.53 0 0 0 .527 0l3.949-2.246v1.555a.05.05 0 0 1-.022.041L6.473 13.3c-1.454.826-3.311.335-4.15-1.098m-.85-6.94A3.02 3.02 0 0 1 3.07 3.949v3.785a.51.51 0 0 0 .262.451l3.93 2.237-1.366.779a.05.05 0 0 1-.048 0L2.585 9.342a2.98 2.98 0 0 1-1.113-4.094zm11.216 2.571L8.747 5.576l1.362-.776a.05.05 0 0 1 .048 0l3.265 1.86a3 3 0 0 1 1.173 1.207 2.96 2.96 0 0 1-.27 3.2 3.05 3.05 0 0 1-1.36.997V8.279a.52.52 0 0 0-.276-.445m1.36-2.015-.097-.057-3.226-1.855a.53.53 0 0 0-.53 0L6.249 6.153V4.598a.04.04 0 0 1 .019-.04L9.533 2.7a3.07 3.07 0 0 1 3.257.139c.474.325.843.778 1.066 1.303.223.526.289 1.103.191 1.664zM5.503 8.575 4.139 7.8a.05.05 0 0 1-.026-.037V4.049c0-.57.166-1.127.476-1.607s.752-.864 1.275-1.105a3.08 3.08 0 0 1 3.234.41l-.096.054-3.23 1.838a.53.53 0 0 0-.265.455zm.742-1.577 1.758-1 1.762 1v2l-1.755 1-1.762-1z"/></svg>`,
     gemini: `<svg viewBox="0 0 65 65" fill="white"><path d="M32.447 0c.68 0 1.273.465 1.439 1.125a38.904 38.904 0 001.999 5.905c2.152 5 5.105 9.376 8.854 13.125 3.751 3.75 8.126 6.703 13.125 8.855a38.98 38.98 0 005.906 1.999c.66.166 1.124.758 1.124 1.438 0 .68-.464 1.273-1.125 1.439a38.902 38.902 0 00-5.905 1.999c-5 2.152-9.375 5.105-13.125 8.854-3.749 3.751-6.702 8.126-8.854 13.125a38.973 38.973 0 00-2 5.906 1.485 1.485 0 01-1.438 1.124c-.68 0-1.272-.464-1.438-1.125a38.913 38.913 0 00-2-5.905c-2.151-5-5.103-9.375-8.854-13.125-3.75-3.749-8.125-6.702-13.125-8.854a38.973 38.973 0 00-5.905-2A1.485 1.485 0 010 32.448c0-.68.465-1.272 1.125-1.438a38.903 38.903 0 005.905-2c5-2.151 9.376-5.104 13.125-8.854 3.75-3.749 6.703-8.125 8.855-13.125a38.972 38.972 0 001.999-5.905A1.485 1.485 0 0132.447 0z"/></svg>`,
     kimi: `<svg viewBox="0 0 16 16" fill="white"><path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/></svg>`,
+    qwen: `<svg viewBox="0 0 331 328" fill="white"><path d="M120 8l23 39-23 39h180l-23 39H102L77 82l43-74z"/><path d="M30 86h45l88 152-25 43H53l22-39h45L30 86z"/><path d="M143 280l22 39 90-156 22 39h45l-43-74-49 0-87 152z"/></svg>`,
+    kilo: `<svg viewBox="48 48 129 132" fill="black"><path d="M66.44 63.01Q64.87 65.23 65.5 68.28A2.33 2.33 0 0 0 67.78 70.13L86.53 70.13A2.43 2.41 67.4 0 1 88.24 70.84L102.02 84.62A3.21 3.21 0 0 1 102.96 86.89L102.96 102.05A.81.81 0 0 1 102.15 102.86L89.67 102.86A.78.77 0 0 1 88.89 102.09L88.89 86.2A2.04 2.04 0 0 0 86.86 84.16Q74.44 84.1 69.34 83.99Q68.24 83.97 67.5 84.16Q65.99 84.54 66.64 85.33L66.35 87.63L65.35 102.17A.65.64 2.3 0 1 64.69 102.77L50.01 102.57L49.99 50.57A.6.59-90 0 1 50.58 49.97L66.18 49.97A.31.31 0 0 1 66.49 50.29L66.44 63.01Z"/><rect x="88.81" y="51" width="14.18" height="16.62" rx="1.08"/><path d="M122.05 63.79L122.05 51.91A1.15 1.14 90 0 1 123.19 50.76L142.37 50.76A4.57 4.56 67.6 0 1 145.61 52.11L153.94 60.44A3.97 3.94 23 0 1 155.1 63.28Q154.92 74.65 155.02 86.25C155.04 88.43 156.32 88.89 158.37 88.92Q166.52 89.04 173.16 88.88A.91.91 0 0 1 174.09 89.79L174.09 102.07A.79.79 0 0 1 173.3 102.86L123.01 102.86A.89.88-90 0 1 122.13 101.97L122.13 89.71A.8.79-89 0 1 122.95 88.91Q130.98 89.21 138 88.78Q140.89 88.61 140.89 85.47Q140.89 75.62 140.52 67.56A2.12 2.11-1.3 0 0 138.4 65.54L123.8 65.54A1.75 1.75 0 0 1 122.05 63.79Z"/><rect x="-6.95" y="-6.95" transform="translate(95.98,129.08) rotate(-0.3)" width="13.9" height="13.9" rx=".88"/><path d="M66.82 158.21Q67.07 158.47 68.12 158.47Q103 158.42 103.5 158.44A.63.62-.5 0 1 104.14 159.06L104.19 174.48A.5.5 0 0 1 103.69 174.98Q94.92 174.96 64.49 175.1C60.2 175.12 58.29 172.24 55.55 169.5C52.81 166.76 49.92 164.85 49.94 160.56Q50.03 130.13 50 121.36A.5.5 0 0 1 50.5 120.86L65.92 120.89A.63.62-89.6 0 1 66.54 121.53Q66.56 122.03 66.56 156.91Q66.56 157.96 66.82 158.21Z"/><path d="M151.27 140.92Q151.82 140.86 151.98 140.39A.33.33 0 0 0 151.67 139.95L139.26 139.95A.32.31 0 0 1 138.94 139.64L138.94 126.18A.55.55 0 0 1 139.5 125.63Q145.94 125.66 153.44 125.56Q156.57 125.51 159.56 124.49L163.35 124.52A1.49 1.48-22.2 0 1 164.36 124.94L173.85 134.44A4.03 4.02-67.7 0 1 175.04 137.3L175.04 161.14A.63.63 0 0 1 174.41 161.77L158.82 161.77A.4.39-90 0 1 158.43 161.37L158.43 141.62A.55.55 0 0 0 157.89 141.07L151.27 140.92Z"/><path d="M136.83 162.31Q137.51 162.99 138.52 163.02Q147.16 163.23 155.66 162.98A1.29 1.29 0 0 1 156.98 164.27L156.98 176.37A.7.69-.4 0 1 156.29 177.06L133.55 177.06A2.39 2.38-21.8 0 1 131.83 176.32Q131.43 175.93 127.32 171.82Q123.2 167.7 122.81 167.3A2.39 2.38-68.1 0 1 122.08 165.58L122.11 142.84A.7.69-89.5 0 1 122.8 142.15L134.9 142.16A1.29 1.29 0 0 1 136.18 143.48Q135.92 151.98 136.13 160.62Q136.15 161.63 136.83 162.31Z"/></svg>`,
 };
 const USER_AVATAR = `<svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="12" r="5" fill="white" opacity="0.85"/><path d="M7 27C7 21.5 11 18 16 18C21 18 25 21.5 25 27" fill="white" opacity="0.85"/></svg>`;
 
@@ -473,6 +477,11 @@ function connectWebSocket() {
         } else if (event.type === 'hats') {
             agentHats = event.data || {};
             updateAllHats();
+        } else if (event.type === 'schedules') {
+            schedulesList = event.data || [];
+            renderSchedulesBar();
+        } else if (event.type === 'schedule') {
+            handleScheduleEvent(event.action, event.data);
         } else if (event.type === 'pending_instance') {
             // A new 2nd+ instance registered — queue naming lightbox
             _pendingNameQueue.push({
@@ -851,6 +860,7 @@ function scrollToBottom() {
     updateScrollAnchor();
 }
 window.scrollToBottom = scrollToBottom;
+window.appendMessage = appendMessage;
 
 function updateScrollAnchor() {
     const anchor = document.getElementById('scroll-anchor');
@@ -863,6 +873,21 @@ function updateScrollAnchor() {
             badge.textContent = unreadCount;
             badge.style.display = unreadCount > 0 ? 'flex' : 'none';
         }
+    }
+    repositionScrollAnchor();
+}
+
+function repositionScrollAnchor() {
+    const anchor = document.getElementById('scroll-anchor');
+    if (!anchor) return;
+    const footer = document.querySelector('footer');
+    if (footer) {
+        anchor.style.bottom = (footer.offsetHeight + 12) + 'px';
+    }
+    const timeline = document.getElementById('timeline');
+    if (timeline) {
+        const rect = timeline.getBoundingClientRect();
+        anchor.style.left = (rect.left + rect.width / 2) + 'px';
     }
 }
 
@@ -1066,10 +1091,11 @@ function buildStatusPills() {
         pill.title = `@${name}`;  // Tooltip: canonical name for manual @-typing
         pill.style.setProperty('--agent-color', cfg.color || '#4ade80');
         pill.innerHTML = `<span class="status-dot"></span><span class="status-label">${escapeHtml(cfg.label || name)}</span>`;
-        // Left-click to rename or name pending instance
-        pill.addEventListener('click', () => {
+        // Left-click to open pill popover (rename + role)
+        pill.addEventListener('click', (e) => {
+            e.stopPropagation();
             const mode = cfg.state === 'pending' ? 'pending' : 'rename';
-            showAgentNameModal({
+            showPillPopover(pill, {
                 name, label: cfg.label || name, color: cfg.color || '#888',
                 base: cfg.base || '', mode,
             });
@@ -1078,6 +1104,21 @@ function buildStatusPills() {
     }
     enableDragScroll(container);
 }
+
+// --- Role presets (shared by pill popover + bubble picker) ---
+
+const ROLE_PRESETS = [
+    { label: 'Planner', emoji: '📋' },
+    { label: 'Designer', emoji: '✨' },
+    { label: 'Architect', emoji: '🏛️' },
+    { label: 'Builder', emoji: '🔨' },
+    { label: 'Reviewer', emoji: '🔍' },
+    { label: 'Researcher', emoji: '🔬' },
+    { label: 'Red Team', emoji: '🛡️' },
+    { label: 'Wry', emoji: '🍸' },
+    { label: 'Unhinged', emoji: '🤪' },
+    { label: 'Hype', emoji: '🎉' },
+];
 
 // --- Agent naming lightbox ---
 
@@ -1090,7 +1131,8 @@ function _showNextPendingName() {
     // Only show if still pending in agentConfig
     const cfg = agentConfig[next.name];
     if (cfg && cfg.state === 'pending') {
-        showAgentNameModal({ ...next, mode: 'pending' });
+        const pillEl = document.getElementById(`status-${next.name}`);
+        showPillPopover(pillEl || null, { ...next, mode: 'pending' });
     } else {
         _showNextPendingName(); // skip stale entries
     }
@@ -1190,6 +1232,140 @@ function _closeAgentNameModal() {
     setTimeout(_showNextPendingName, 200);
 }
 
+// --- Pill popover (rename + role) ---
+
+function showPillPopover(pillEl, opts) {
+    if (opts.mode === 'pending') _nameModalActive = true;
+
+    document.querySelectorAll('.pill-popover').forEach(p => p.remove());
+
+    const popover = document.createElement('div');
+    popover.className = 'pill-popover';
+    popover.style.setProperty('--agent-color', opts.color);
+
+    const currentRole = (_agentRoles[opts.name] || '').toLowerCase();
+    const roleChipsHtml = ROLE_PRESETS.map(p =>
+        `<button class="role-preset-chip pill-role-chip ${currentRole === p.label.toLowerCase() ? 'active' : ''}" data-role="${escapeHtml(p.label)}">${p.emoji} ${escapeHtml(p.label)}</button>`
+    ).join('');
+    const customChipsHtml = (window.customRoles || [])
+        .filter(r => r && !ROLE_PRESETS.some(p => p.label.toLowerCase() === r.toLowerCase()))
+        .map(r =>
+            `<button class="role-preset-chip pill-role-chip pill-custom-chip ${currentRole === r.toLowerCase() ? 'active' : ''}" data-role="${escapeHtml(r)}"><span class="pill-custom-label">${escapeHtml(r)}</span><span class="pill-custom-trash"><svg width="10" height="10" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M6 4V3h4v1M5 4v8.5h6V4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="pill-custom-confirm"><span class="pill-confirm-yes">&#10003;</span><span class="pill-confirm-no">&#10005;</span></span></button>`
+        ).join('');
+
+    popover.innerHTML = `
+        <div class="pill-popover-section">
+            <label class="pill-popover-label">${opts.mode === 'pending' ? 'Name this agent' : 'Rename'}</label>
+            <div class="pill-popover-rename-row">
+                <input type="text" class="pill-popover-input" value="${escapeHtml(opts.label)}" maxlength="24" spellcheck="false" />
+                <button class="pill-popover-confirm">${opts.mode === 'pending' ? 'Confirm' : 'Rename'}</button>
+            </div>
+        </div>
+        <div class="pill-popover-section">
+            <label class="pill-popover-label">Role</label>
+            <div class="pill-popover-roles">
+                <button class="role-preset-chip pill-role-chip ${!currentRole ? 'active' : ''}" data-role="">None</button>
+                ${roleChipsHtml}
+                ${customChipsHtml}
+            </div>
+            <div class="pill-popover-custom-row">
+                <input type="text" class="pill-popover-custom-input" placeholder="Custom role..." maxlength="20" />
+            </div>
+        </div>
+    `;
+
+    const inputEl = popover.querySelector('.pill-popover-input');
+    const confirmBtn = popover.querySelector('.pill-popover-confirm');
+    const customInput = popover.querySelector('.pill-popover-custom-input');
+
+    const closePopover = () => {
+        popover.remove();
+        document.removeEventListener('click', outsideClickHandler, true);
+        if (opts.mode === 'pending') {
+            _nameModalActive = false;
+            setTimeout(_showNextPendingName, 200);
+        }
+    };
+
+    const outsideClickHandler = (e) => {
+        if (!popover.contains(e.target) && !(pillEl && pillEl.contains(e.target))) {
+            closePopover();
+        }
+    };
+
+    confirmBtn.addEventListener('click', () => {
+        const label = inputEl.value.trim();
+        if (!label) return;
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            if (opts.mode === 'pending') {
+                ws.send(JSON.stringify({ type: 'name_pending', name: opts.name, label }));
+            } else {
+                ws.send(JSON.stringify({ type: 'rename_agent', name: opts.name, label }));
+            }
+        }
+        closePopover();
+    });
+
+    inputEl.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') { confirmBtn.click(); e.preventDefault(); }
+        if (e.key === 'Escape') { closePopover(); e.preventDefault(); }
+    });
+
+    popover.querySelectorAll('.pill-role-chip').forEach(chip => {
+        chip.addEventListener('click', () => {
+            const role = chip.dataset.role || '';
+            _setRole(opts.name, role);
+            closePopover();
+        });
+    });
+
+    // Custom chip: trash icon → confirm mode (red chip with tick/cross)
+    popover.querySelectorAll('.pill-custom-chip').forEach(chip => {
+        const trash = chip.querySelector('.pill-custom-trash');
+        const confirmEl = chip.querySelector('.pill-custom-confirm');
+        const yesBtn = chip.querySelector('.pill-confirm-yes');
+        const noBtn = chip.querySelector('.pill-confirm-no');
+
+        if (trash) trash.addEventListener('click', (e) => {
+            e.stopPropagation();
+            chip.classList.add('confirm-delete');
+        });
+        if (yesBtn) yesBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            _deleteCustomRole(chip.dataset.role);
+            chip.remove();
+        });
+        if (noBtn) noBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            chip.classList.remove('confirm-delete');
+        });
+    });
+
+    customInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const val = customInput.value.trim();
+            if (val) { _setRole(opts.name, val); closePopover(); }
+            e.preventDefault();
+        }
+        if (e.key === 'Escape') { closePopover(); e.preventDefault(); }
+    });
+
+    document.body.appendChild(popover);
+
+    if (pillEl) {
+        const rect = pillEl.getBoundingClientRect();
+        popover.style.top = `${rect.bottom + 8}px`;
+        popover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
+    } else {
+        popover.style.top = '50%';
+        popover.style.left = '50%';
+        popover.style.transform = 'translate(-50%, -50%)';
+    }
+
+    setTimeout(() => document.addEventListener('click', outsideClickHandler, true), 0);
+    inputEl.focus();
+}
+
 // --- Bubble role picker ---
 
 function showBubbleRolePicker(btn, agentName) {
@@ -1199,19 +1375,6 @@ function showBubbleRolePicker(btn, agentName) {
         if (msg) msg.style.zIndex = '';
         p.remove();
     });
-
-    const ROLE_PRESETS = [
-        { label: 'Planner', emoji: '📋' },
-        { label: 'Designer', emoji: '✨' },
-        { label: 'Architect', emoji: '🏛️' },
-        { label: 'Builder', emoji: '🔨' },
-        { label: 'Reviewer', emoji: '🔍' },
-        { label: 'Researcher', emoji: '🔬' },
-        { label: 'Red Team', emoji: '🛡️' },
-        { label: 'Wry', emoji: '🍸' },
-        { label: 'Unhinged', emoji: '🤪' },
-        { label: 'Hype', emoji: '🎉' },
-    ];
 
     const currentRole = (_agentRoles[agentName] || '').toLowerCase();
     const picker = document.createElement('div');
@@ -1233,6 +1396,16 @@ function showBubbleRolePicker(btn, agentName) {
         picker.appendChild(chip);
     }
 
+    // Saved custom roles
+    for (const r of (window.customRoles || [])) {
+        if (!r || ROLE_PRESETS.some(p => p.label.toLowerCase() === r.toLowerCase())) continue;
+        const chip = document.createElement('button');
+        chip.className = 'role-preset-chip' + (currentRole === r.toLowerCase() ? ' active' : '');
+        chip.textContent = r;
+        chip.addEventListener('click', () => { _setRole(agentName, r); closePicker(); });
+        picker.appendChild(chip);
+    }
+
     // Custom text input
     const customRow = document.createElement('div');
     customRow.className = 'bubble-role-custom';
@@ -1240,7 +1413,7 @@ function showBubbleRolePicker(btn, agentName) {
     customInput.type = 'text';
     customInput.className = 'bubble-role-input';
     customInput.placeholder = 'Custom...';
-    customInput.maxLength = 30;
+    customInput.maxLength = 20;
     customInput.addEventListener('keydown', (e) => {
         if (e.key === 'Enter') {
             const val = customInput.value.trim();
@@ -1315,6 +1488,36 @@ function _setRole(agentName, role) {
     // Optimistic update
     _agentRoles[agentName] = role;
     _syncBubbleRolePills(agentName);
+    // If custom role (not in presets), auto-save it
+    if (role && !ROLE_PRESETS.some(p => p.label.toLowerCase() === role.toLowerCase())) {
+        _addCustomRole(role);
+    }
+}
+
+function _addCustomRole(role) {
+    const list = window.customRoles || [];
+    const lower = role.trim().toLowerCase();
+    if (list.some(r => r.toLowerCase() === lower)) return;
+    const updated = [...list, role.trim()].slice(-20);
+    window.customRoles = updated;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'update_settings', data: { custom_roles: updated } }));
+    }
+}
+
+function _deleteCustomRole(role) {
+    const lower = role.trim().toLowerCase();
+    const updated = (window.customRoles || []).filter(r => r.toLowerCase() !== lower);
+    window.customRoles = updated;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'update_settings', data: { custom_roles: updated } }));
+    }
+    // Unassign from any agents currently using this role
+    for (const [agentName, agentRole] of Object.entries(_agentRoles)) {
+        if (agentRole && agentRole.toLowerCase() === lower) {
+            _setRole(agentName, '');
+        }
+    }
 }
 
 // --- Status ---
@@ -1406,6 +1609,9 @@ function applySettings(data) {
     }
     if (data.rules_refresh_interval !== undefined) {
         document.getElementById('setting-rules-refresh').value = String(data.rules_refresh_interval);
+    }
+    if (Array.isArray(data.custom_roles)) {
+        window.customRoles = data.custom_roles;
     }
     if (data.channels && Array.isArray(data.channels)) {
         channelList = data.channels;
@@ -1772,13 +1978,23 @@ function setupInput() {
         }
     });
 
-    // Auto-resize + slash menu + mention menu
+    // Auto-resize + slash menu + mention menu + send button state
     input.addEventListener('input', () => {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
         updateSlashMenu(input.value);
         updateMentionMenu();
+        updateSendButton();
     });
+    updateSendButton();
+}
+
+function updateSendButton() {
+    const input = document.getElementById('input');
+    const group = document.querySelector('.send-group');
+    if (!input || !group) return;
+    const hasContent = input.value.trim().length > 0 || pendingAttachments.length > 0;
+    group.classList.toggle('inactive', !hasContent);
 }
 
 function sendMessage() {
@@ -1841,6 +2057,7 @@ function sendMessage() {
     input.style.height = 'auto';
     clearAttachments();
     cancelReply();
+    updateSendButton();
     input.focus();
 }
 
@@ -1943,6 +2160,7 @@ function renderAttachments() {
         `;
         container.appendChild(wrap);
     });
+    repositionScrollAnchor();
 }
 
 function removeAttachment(index) {
@@ -1953,6 +2171,7 @@ function removeAttachment(index) {
 function clearAttachments() {
     pendingAttachments = [];
     document.getElementById('attachments').innerHTML = '';
+    repositionScrollAnchor();
 }
 
 // --- Scroll tracking ---
@@ -1978,6 +2197,94 @@ function setupScroll() {
         }
     });
     resizeObserver.observe(messages);
+
+    // Reposition scroll-anchor when window resizes or sidebars toggle
+    window.addEventListener('resize', repositionScrollAnchor);
+    const contentArea = document.querySelector('.content-area');
+    if (contentArea) {
+        new ResizeObserver(repositionScrollAnchor).observe(contentArea);
+    }
+
+    // Collapse "Support development" to heart-only when the expanded pill would crowd tabs.
+    const supportLink = document.querySelector('.channel-support');
+    const supportLabel = document.querySelector('.support-label');
+    const channelBar = document.getElementById('channel-bar');
+    const channelBarRight = document.querySelector('.channel-bar-right');
+    const tabs = document.getElementById('channel-tabs');
+    const addBtn = document.getElementById('channel-add-btn');
+    if (supportLink && supportLabel && channelBar && channelBarRight && tabs) {
+        const COMFORT_MARGIN = 16;
+        const EXPAND_HYSTERESIS = 24;
+        let isCompact = supportLink.classList.contains('compact');
+
+        function applySupportCompact(compact) {
+            if (isCompact === compact) return false;
+            isCompact = compact;
+            supportLink.classList.toggle('compact', compact);
+            supportLabel.style.display = compact ? 'none' : '';
+            return true;
+        }
+
+        function measureRightWidth(compact) {
+            const prevCompact = supportLink.classList.contains('compact');
+            const prevDisplay = supportLabel.style.display;
+            supportLink.classList.toggle('compact', compact);
+            supportLabel.style.display = compact ? 'none' : '';
+            const width = Math.ceil(channelBarRight.getBoundingClientRect().width);
+            supportLink.classList.toggle('compact', prevCompact);
+            supportLabel.style.display = prevDisplay;
+            return width;
+        }
+
+        function getTabsContentWidth() {
+            const styles = getComputedStyle(tabs);
+            const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
+            const children = Array.from(tabs.children);
+            let width = 0;
+            children.forEach((child, index) => {
+                width += child.getBoundingClientRect().width;
+                if (index < children.length - 1) width += gap;
+            });
+            return Math.ceil(width);
+        }
+
+        function checkSupportCollapse() {
+            const available = Math.ceil(channelBar.clientWidth);
+            const tabsWidth = getTabsContentWidth();
+            const addWidth = addBtn ? Math.ceil(addBtn.getBoundingClientRect().width + 8) : 0;
+            const expandedRightWidth = measureRightWidth(false);
+            const expandedNeeded = tabsWidth + addWidth + expandedRightWidth + COMFORT_MARGIN;
+
+            if (!isCompact && expandedNeeded > available) {
+                if (applySupportCompact(true)) requestAnimationFrame(checkSupportCollapse);
+                return;
+            }
+
+            if (isCompact && expandedNeeded + EXPAND_HYSTERESIS < available) {
+                if (applySupportCompact(false)) requestAnimationFrame(checkSupportCollapse);
+            }
+        }
+
+        const scheduleSupportRecheck = () => requestAnimationFrame(checkSupportCollapse);
+        window.addEventListener('resize', scheduleSupportRecheck);
+
+        const supportResizeObserver = new ResizeObserver(scheduleSupportRecheck);
+        supportResizeObserver.observe(channelBar);
+        supportResizeObserver.observe(tabs);
+        supportResizeObserver.observe(channelBarRight);
+
+        new MutationObserver(scheduleSupportRecheck).observe(tabs, {
+            childList: true,
+            subtree: true,
+            attributes: true,
+            attributeFilter: ['class', 'style'],
+        });
+
+        requestAnimationFrame(() => {
+            checkSupportCollapse();
+            setTimeout(checkSupportCollapse, 0);
+        });
+    }
 }
 
 // --- Reply ---
@@ -2194,7 +2501,7 @@ function enterDeleteMode(initialId) {
     // Show floating delete bar
     showDeleteBar();
     updateDeleteBar();
-    document.getElementById('scroll-anchor').style.bottom = '180px';
+    repositionScrollAnchor();
 }
 
 function toggleDeleteSelect(id, dragForceSelect) {
@@ -2267,7 +2574,7 @@ function exitDeleteMode() {
         setTimeout(() => el.remove(), 200);
     });
 
-    document.getElementById('scroll-anchor').style.bottom = '';
+    repositionScrollAnchor();
 }
 
 // Auto-scroll while dragging near edges
@@ -2405,6 +2712,7 @@ function buildMentionToggles() {
                 activeMentions.add(name);
                 btn.classList.add('active');
             }
+            updateSchedulePopoverState();
         };
         container.appendChild(btn);
     }
@@ -2415,6 +2723,17 @@ function buildMentionToggles() {
 
 let recognition = null;
 let isListening = false;
+
+function focusComposerInput() {
+    const input = document.getElementById('input');
+    if (!input) return null;
+    try {
+        input.focus({ preventScroll: true });
+    } catch (_) {
+        input.focus();
+    }
+    return input;
+}
 
 function toggleVoice() {
     if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
@@ -2433,13 +2752,17 @@ function toggleVoice() {
     recognition.continuous = true;
     recognition.interimResults = true;
 
-    const input = document.getElementById('input');
+    const input = focusComposerInput();
+    if (!input) return;
     const baseText = input.value;
     let finalTranscript = '';
+    const micButton = document.getElementById('mic');
 
     recognition.onstart = () => {
         isListening = true;
-        document.getElementById('mic').classList.add('recording');
+        micButton.classList.add('recording');
+        micButton.setAttribute('aria-pressed', 'true');
+        focusComposerInput();
     };
 
     recognition.onresult = (e) => {
@@ -2454,29 +2777,54 @@ function toggleVoice() {
             }
         }
         input.value = baseText + (baseText ? ' ' : '') + finalTranscript + interim;
+        focusComposerInput();
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
     };
 
     recognition.onerror = (e) => {
         console.error('Speech error:', e.error);
-        stopVoice();
+        if (e.error === 'not-allowed' || e.error === 'service-not-allowed') {
+            alert('Microphone access was blocked. Allow microphone access in Chrome and try again.');
+            stopVoice();
+        } else if (e.error === 'no-speech' || e.error === 'aborted') {
+            // no-speech: Chrome fires after ~5s silence — keep listening
+            // aborted: fires during restart cycle — safe to ignore
+            console.log('Speech:', e.error, '— still listening...');
+        } else {
+            stopVoice();
+        }
     };
 
     recognition.onend = () => {
-        stopVoice();
+        // If still supposed to be listening (e.g. after no-speech), restart
+        if (isListening) {
+            try { recognition.start(); } catch (_) { stopVoice(); }
+        } else {
+            stopVoice();
+        }
     };
 
-    recognition.start();
+    try {
+        recognition.start();
+    } catch (e) {
+        console.error('Speech start failed:', e);
+        stopVoice();
+    }
 }
 
 function stopVoice() {
     isListening = false;
-    document.getElementById('mic').classList.remove('recording');
+    const micButton = document.getElementById('mic');
+    if (micButton) {
+        micButton.classList.remove('recording');
+        micButton.setAttribute('aria-pressed', 'false');
+    }
     if (recognition) {
         try { recognition.stop(); } catch (_) {}
         recognition = null;
     }
+    focusComposerInput();
 }
 
 // --- Image modal ---
@@ -2618,6 +2966,419 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 window.escapeHtml = escapeHtml;
+
+// --- Schedules strip ---
+
+function handleScheduleEvent(action, schedule) {
+    if (action === 'create') {
+        schedulesList = schedulesList.filter(s => s.id !== schedule.id);
+        schedulesList.push(schedule);
+    } else if (action === 'update') {
+        schedulesList = schedulesList.map(s => s.id === schedule.id ? schedule : s);
+    } else if (action === 'delete') {
+        schedulesList = schedulesList.filter(s => s.id !== schedule.id);
+    }
+    renderSchedulesBar();
+}
+
+function renderSchedulesBar() {
+    const bar = document.getElementById('schedules-bar');
+    if (!bar) return;
+
+    const active = schedulesList.filter(s => s.active !== false);
+    if (schedulesList.length === 0) {
+        bar.classList.add('hidden');
+        bar.classList.remove('expanded');
+        document.getElementById('schedules-list')?.classList.add('hidden');
+        repositionScrollAnchor();
+        return;
+    }
+
+    bar.classList.remove('hidden');
+
+    // Summary line -- Slack-style: describe the next firing
+    const countEl = document.getElementById('schedules-count');
+    const nextEl = document.getElementById('schedules-next');
+
+    // Clean up inline controls from previous render
+    const summaryDiv = bar.querySelector('.schedules-bar-summary');
+    summaryDiv.querySelector('.schedule-toggle-inline')?.remove();
+    summaryDiv.querySelector('.schedule-delete-inline')?.remove();
+
+    if (schedulesList.length === 1) {
+        const s = schedulesList[0];
+        const isPaused = s.active === false;
+        const targetStr = (s.targets || []).map(t => '@' + t).join(', ');
+        countEl.textContent = `${targetStr} "${s.prompt}"` + (isPaused ? ' (paused)' : '');
+        const nextStr = (!isPaused && s.next_run) ? formatScheduleTime(s.next_run) : '';
+        nextEl.textContent = nextStr
+            ? formatScheduleInterval(s) + ' -- next in ' + nextStr
+            : formatScheduleInterval(s);
+    } else if (active.length > 0) {
+        const paused = schedulesList.length - active.length;
+        const parts = [`${active.length} active`];
+        if (paused > 0) parts.push(`${paused} paused`);
+        countEl.textContent = parts.join(', ');
+        const futureRuns = active.filter(s => s.next_run && s.next_run * 1000 > Date.now()).map(s => s.next_run);
+        const nextTimeStr = futureRuns.length > 0 ? formatScheduleTime(Math.min(...futureRuns)) : '';
+        nextEl.textContent = nextTimeStr ? 'next in ' + nextTimeStr : '';
+    } else {
+        const paused = schedulesList.length;
+        countEl.textContent = `${paused} paused schedule${paused !== 1 ? 's' : ''}`;
+        nextEl.textContent = '';
+    }
+
+    // Inline pause + trash when only 1 schedule; hide "See all" link
+    const seeAllLink = summaryDiv.querySelector('.schedules-see-all');
+    if (schedulesList.length === 1) {
+        const s = schedulesList[0];
+        const isPaused = s.active === false;
+
+        const pauseBtn = document.createElement('button');
+        pauseBtn.className = 'schedule-toggle-inline' + (isPaused ? ' paused' : '');
+        pauseBtn.innerHTML = isPaused
+            ? '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M5 3l8 5-8 5V3z" fill="currentColor"/></svg>'
+            : '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><rect x="4" y="3" width="3" height="10" rx="0.5" fill="currentColor"/><rect x="9" y="3" width="3" height="10" rx="0.5" fill="currentColor"/></svg>';
+        pauseBtn.title = isPaused ? 'Resume' : 'Pause';
+        pauseBtn.onclick = () => toggleSchedule(s.id);
+
+        const trashBtn = document.createElement('button');
+        trashBtn.className = 'schedule-delete-inline';
+        trashBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M5.5 4V3a1 1 0 011-1h3a1 1 0 011 1v1M6 7v5M10 7v5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M4 4l.5 9a1 1 0 001 1h5a1 1 0 001-1L12 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        trashBtn.title = 'Delete';
+        trashBtn.onclick = () => deleteSchedule(s.id);
+
+        summaryDiv.append(pauseBtn, trashBtn);
+        if (seeAllLink) seeAllLink.style.display = 'none';
+        // Collapse expanded list — summary has everything
+        bar.classList.remove('expanded');
+        document.getElementById('schedules-list')?.classList.add('hidden');
+        if (seeAllLink) seeAllLink.textContent = 'See all';
+    } else {
+        if (seeAllLink) seeAllLink.style.display = '';
+    }
+
+    // Adjust scroll-anchor so it sits above the footer
+    repositionScrollAnchor();
+
+    // Expanded list
+    const list = document.getElementById('schedules-list');
+    list.innerHTML = '';
+    for (const s of schedulesList) {
+        const row = document.createElement('div');
+        row.className = 'schedule-row' + (s.active === false ? ' paused' : '');
+
+        const targets = document.createElement('span');
+        targets.className = 'schedule-targets';
+        targets.textContent = (s.targets || []).map(t => '@' + t).join(' ');
+
+        const prompt = document.createElement('span');
+        prompt.className = 'schedule-prompt';
+        prompt.textContent = s.prompt || '';
+        prompt.title = s.prompt || '';
+
+        const interval = document.createElement('span');
+        interval.className = 'schedule-interval';
+        interval.textContent = formatScheduleInterval(s);
+
+        const toggleBtn = document.createElement('button');
+        toggleBtn.className = 'schedule-toggle';
+        toggleBtn.textContent = s.active === false ? '▶' : '⏸';
+        toggleBtn.title = s.active === false ? 'Resume' : 'Pause';
+        toggleBtn.onclick = () => toggleSchedule(s.id);
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'schedule-delete';
+        deleteBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 16 16" fill="none"><path d="M3 4h10M5.5 4V3a1 1 0 011-1h3a1 1 0 011 1v1M6 7v5M10 7v5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M4 4l.5 9a1 1 0 001 1h5a1 1 0 001-1L12 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+        deleteBtn.title = 'Delete';
+        deleteBtn.onclick = () => deleteSchedule(s.id);
+
+        row.append(targets, prompt, interval, toggleBtn, deleteBtn);
+        list.appendChild(row);
+    }
+}
+
+function formatScheduleTime(ts) {
+    const d = new Date(ts * 1000);
+    const now = new Date();
+    const diffMs = d - now;
+    if (diffMs < 0) return '';
+    if (diffMs < 60000) return '<1m';
+    if (diffMs < 3600000) return Math.ceil(diffMs / 60000) + 'm';
+    if (diffMs < 86400000) {
+        const h = Math.floor(diffMs / 3600000);
+        const m = Math.ceil((diffMs % 3600000) / 60000);
+        return m > 0 ? `${h}h ${m}m` : `${h}h`;
+    }
+    return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+function formatScheduleInterval(s) {
+    if (s.daily_at) return 'daily at ' + s.daily_at;
+    const sec = s.interval_seconds || 0;
+    if (sec < 3600) return 'every ' + Math.round(sec / 60) + 'm';
+    if (sec < 86400) return 'every ' + Math.round(sec / 3600) + 'h';
+    return 'every ' + Math.round(sec / 86400) + 'd';
+}
+
+function toggleSchedulesExpand() {
+    const bar = document.getElementById('schedules-bar');
+    const list = document.getElementById('schedules-list');
+    if (!bar || !list) return;
+    const expanded = bar.classList.toggle('expanded');
+    list.classList.toggle('hidden', !expanded);
+    const link = bar.querySelector('.schedules-see-all');
+    if (link) link.textContent = expanded ? 'Hide' : 'See all';
+}
+
+async function toggleSchedule(id) {
+    try {
+        await fetch(`/api/schedules/${id}/toggle`, {
+            method: 'PATCH',
+            headers: { 'X-Session-Token': SESSION_TOKEN },
+        });
+    } catch (e) {
+        console.error('Failed to toggle schedule:', e);
+    }
+}
+
+async function deleteSchedule(id) {
+    try {
+        await fetch(`/api/schedules/${id}`, {
+            method: 'DELETE',
+            headers: { 'X-Session-Token': SESSION_TOKEN },
+        });
+    } catch (e) {
+        console.error('Failed to delete schedule:', e);
+    }
+}
+
+function showScheduleConfirmation() {
+    const bar = document.getElementById('schedules-bar');
+    if (!bar) return;
+    bar.classList.remove('hidden');
+    // Flash the bar green for 2s then transition back
+    bar.classList.add('sched-flash');
+    setTimeout(() => bar.classList.remove('sched-flash'), 2000);
+}
+
+// --- Schedule popover ---
+
+function toggleSchedulePopover(e) {
+    if (e) e.stopPropagation();
+    const pop = document.getElementById('schedule-popover');
+    if (!pop) return;
+    const opening = pop.classList.contains('hidden');
+    pop.classList.toggle('hidden');
+    if (opening) {
+        populateScheduleDropdowns();
+        updateSchedulePopoverState();
+    }
+}
+
+function closeSchedulePopover() {
+    const pop = document.getElementById('schedule-popover');
+    if (pop) pop.classList.add('hidden');
+}
+
+function stepNumInput(id, delta) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const min = parseInt(el.min) || 1;
+    const max = parseInt(el.max) || 99;
+    const val = Math.max(min, Math.min(max, (parseInt(el.value) || min) + delta));
+    el.value = val;
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+}
+
+function stepSchedNum(delta) {
+    stepNumInput('sched-interval-val', delta);
+}
+
+function toggleRecurringFields() {
+    const checked = document.getElementById('sched-recurring')?.checked;
+    const fields = document.getElementById('sched-recurring-fields');
+    if (fields) fields.classList.toggle('hidden', !checked);
+    // Dim both "When" and "At" rows when recurring is active
+    const whenRow = document.getElementById('sched-date')?.closest('.sched-pop-row');
+    const atRow = document.getElementById('sched-hour')?.closest('.sched-pop-row');
+    if (whenRow) whenRow.classList.toggle('sched-dimmed', !!checked);
+    if (atRow) atRow.classList.toggle('sched-dimmed', !!checked);
+}
+
+function populateScheduleDropdowns() {
+    const dateEl = document.getElementById('sched-date');
+    const hourEl = document.getElementById('sched-hour');
+    const minEl = document.getElementById('sched-minute');
+    const ampmEl = document.getElementById('sched-ampm');
+    if (!dateEl || !hourEl || !minEl || !ampmEl) return;
+
+    // Date options: Today, Tomorrow, then next 5 weekdays
+    dateEl.innerHTML = '';
+    const days = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+    const now = new Date();
+    for (let i = 0; i < 7; i++) {
+        const d = new Date(now);
+        d.setDate(d.getDate() + i);
+        const opt = document.createElement('option');
+        opt.value = d.toISOString().slice(0, 10);
+        opt.textContent = i === 0 ? 'Today' : i === 1 ? 'Tomorrow' : days[d.getDay()];
+        dateEl.appendChild(opt);
+    }
+
+    // Default to next rounded quarter hour
+    const nextQuarter = new Date(now);
+    nextQuarter.setMinutes(Math.ceil(nextQuarter.getMinutes() / 15) * 15 + 15, 0, 0);
+    const defHr = nextQuarter.getHours();
+    const defMin = nextQuarter.getMinutes();
+
+    // Hour (1-12)
+    hourEl.innerHTML = '';
+    for (let h = 1; h <= 12; h++) {
+        const opt = document.createElement('option');
+        opt.value = h;
+        opt.textContent = h;
+        const match24 = defHr === 0 ? 12 : defHr > 12 ? defHr - 12 : defHr;
+        if (h === match24) opt.selected = true;
+        hourEl.appendChild(opt);
+    }
+
+    // Minute (00, 15, 30, 45)
+    minEl.innerHTML = '';
+    for (const m of [0, 15, 30, 45]) {
+        const opt = document.createElement('option');
+        opt.value = m;
+        opt.textContent = String(m).padStart(2, '0');
+        if (m === defMin) opt.selected = true;
+        minEl.appendChild(opt);
+    }
+
+    // AM/PM
+    ampmEl.innerHTML = '';
+    for (const p of ['AM', 'PM']) {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if ((defHr < 12 && p === 'AM') || (defHr >= 12 && p === 'PM')) opt.selected = true;
+        ampmEl.appendChild(opt);
+    }
+}
+
+function getScheduleTime24() {
+    let h = parseInt(document.getElementById('sched-hour')?.value) || 12;
+    const m = parseInt(document.getElementById('sched-minute')?.value) || 0;
+    const ampm = document.getElementById('sched-ampm')?.value || 'AM';
+    if (ampm === 'PM' && h < 12) h += 12;
+    if (ampm === 'AM' && h === 12) h = 0;
+    return String(h).padStart(2, '0') + ':' + String(m).padStart(2, '0');
+}
+
+function updateSchedulePopoverState() {
+    const pop = document.getElementById('schedule-popover');
+    if (!pop || pop.classList.contains('hidden')) return;
+    const errEl = document.getElementById('sched-pop-error');
+    const submitBtn = pop.querySelector('.sched-pop-submit');
+    const input = document.getElementById('input');
+    const text = input ? input.value.trim() : '';
+    const mentionMatches = text.match(/@(\w+)/g) || [];
+    const targets = new Set(mentionMatches.map(m => m.slice(1)));
+    for (const name of activeMentions) targets.add(name);
+    if (targets.size === 0) {
+        if (errEl) { errEl.textContent = 'Toggle an agent to set a target'; errEl.classList.remove('hidden'); }
+        if (submitBtn) { submitBtn.disabled = true; }
+    } else {
+        if (errEl) { errEl.classList.add('hidden'); errEl.textContent = ''; }
+        if (submitBtn) { submitBtn.disabled = false; }
+    }
+}
+
+async function submitSchedulePopover() {
+    const input = document.getElementById('input');
+    const text = input ? input.value.trim() : '';
+
+    // Gather targets
+    const mentionMatches = text.match(/@(\w+)/g) || [];
+    const targets = new Set(mentionMatches.map(m => m.slice(1)));
+    for (const name of activeMentions) targets.add(name);
+    let prompt = text.replace(/@\w+/g, '').trim();
+
+    const errEl = document.getElementById('sched-pop-error');
+
+    if (targets.size === 0) return; // button should be disabled anyway
+    if (!prompt) {
+        if (errEl) { errEl.textContent = 'Type a message first'; errEl.classList.remove('hidden'); }
+        return;
+    }
+
+    const recurring = document.getElementById('sched-recurring')?.checked;
+    const dateVal = document.getElementById('sched-date')?.value;
+    const timeVal = getScheduleTime24();
+    const intervalVal = parseInt(document.getElementById('sched-interval-val')?.value) || 1;
+    const intervalUnit = document.getElementById('sched-interval-unit')?.value || 'hours';
+
+    // Build spec for the API
+    let spec, confirmText;
+    if (recurring) {
+        const unitShort = intervalUnit === 'minutes' ? 'm' : intervalUnit === 'hours' ? 'h' : 'd';
+        spec = `every ${intervalVal}${unitShort}`;
+        confirmText = spec;
+    } else {
+        // One-shot: "daily at HH:MM" with one_shot flag
+        spec = `daily at ${timeVal}`;
+        confirmText = `${dateVal} at ${timeVal}`;
+    }
+
+    closeSchedulePopover();
+
+    try {
+        const body = {
+            prompt: prompt,
+            targets: [...targets],
+            channel: activeChannel,
+            spec: spec,
+            created_by: username,
+        };
+        if (!recurring) body.one_shot = true;
+        if (!recurring && dateVal) body.send_at_date = dateVal;
+
+        const resp = await fetch('/api/schedules', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Session-Token': SESSION_TOKEN,
+            },
+            body: JSON.stringify(body),
+        });
+        if (resp.ok) {
+            input.value = '';
+            input.style.height = 'auto';
+            updateSendButton();
+            showScheduleConfirmation();
+        } else {
+            const err = await resp.json().catch(() => ({}));
+            showSlashHint(err.error || 'Failed to schedule');
+        }
+    } catch (e) {
+        console.error('Failed to create schedule:', e);
+        showSlashHint('Failed to create schedule');
+    }
+}
+
+// Close popover on outside click
+document.addEventListener('click', (e) => {
+    const pop = document.getElementById('schedule-popover');
+    if (pop && !pop.classList.contains('hidden')) {
+        if (!e.target.closest('.schedule-popover') && !e.target.closest('footer')) {
+            pop.classList.add('hidden');
+        }
+    }
+});
+
+// Refresh "next: Xm" countdowns every 30s
+setInterval(() => {
+    if (schedulesList.length > 0) renderSchedulesBar();
+}, 10000);
 
 // --- Start ---
 

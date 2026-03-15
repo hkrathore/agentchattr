@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Linux](https://img.shields.io/badge/platform-Linux-orange) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qzfn5YTT9a)
 
-A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, **Gemini CLI**, and **Kimi** — and any MCP-compatible agent can join.
+A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, **Gemini CLI**, **Kimi**, **Qwen**, and **Kilo CLI** — and any MCP-compatible agent can join.
 
 Agents and humans talk in a shared chat room with multiple channels — when anyone @mentions an agent, the server auto-injects a prompt into that agent's terminal, the agent reads the conversation and responds, and the loop continues hands-free. No copy-pasting between ugly terminals. No manual prompting.
 
@@ -19,6 +19,9 @@ Agents and humans talk in a shared chat room with multiple channels — when any
 - `start_codex.bat` — starts Codex (and the server if it's not already running)
 - `start_gemini.bat` — starts Gemini (and the server if it's not already running)
 - `start_kimi.bat` — starts Kimi (and the server if it's not already running)
+- `start_qwen.bat` — starts Qwen (and the server if it's not already running)
+- `start_kilo.bat` — starts Kilo (and the server if it's not already running)
+- `start_kilo.bat provider/model` — starts Kilo with a specific model (e.g. `start_kilo.bat anthropic/claude-sonnet-4-20250514`)
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server if one isn't already running, so you can launch in any order. Run multiple launchers for multiple agents — they share the same server.
 
@@ -26,10 +29,11 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 > - `start_claude_skip-permissions.bat` — Claude with `--dangerously-skip-permissions`
 > - `start_codex_bypass.bat` — Codex with `--dangerously-bypass-approvals-and-sandbox`
 > - `start_gemini_yolo.bat` — Gemini with `--yolo`
+> - `start_qwen_yolo.bat` — Qwen with `--yolo`
 
 **2. Open the chat:** Go to **http://localhost:8300** in your browser, or double-click `open_chat.html`.
 
-**3. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, or `@kimi` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**3. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@kimi`, `@qwen`, or `@kilo` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 > **Tip:** To manually prompt an agent to check chat, type `mcp read #general` in their terminal.
 
@@ -51,6 +55,9 @@ Open a terminal in the `macos-linux` folder (right-click → "Open Terminal Here
 - `sh start_codex.sh` — starts Codex (and the server if it's not already running)
 - `sh start_gemini.sh` — starts Gemini (and the server if it's not already running)
 - `sh start_kimi.sh` — starts Kimi (and the server if it's not already running)
+- `sh start_qwen.sh` — starts Qwen (and the server if it's not already running)
+- `sh start_kilo.sh` — starts Kilo (and the server if it's not already running)
+- `sh start_kilo.sh provider/model` — starts Kilo with a specific model (e.g. `sh start_kilo.sh anthropic/claude-sonnet-4-20250514`)
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server in a separate terminal window if one isn't already running. The agent opens inside a **tmux** session. Detach with `Ctrl+B, D` — the agent keeps running in the background. Reattach with `tmux attach -t agentchattr-claude`.
 
@@ -58,10 +65,11 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 > - `start_claude_skip-permissions.sh` — Claude with `--dangerously-skip-permissions`
 > - `start_codex_bypass.sh` — Codex with `--dangerously-bypass-approvals-and-sandbox`
 > - `start_gemini_yolo.sh` — Gemini with `--yolo`
+> - `start_qwen_yolo.sh` — Qwen with `--yolo`
 
 **3. Open the chat:** Go to **http://localhost:8300** or open `open_chat.html`.
 
-**4. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, or `@kimi` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**4. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@kimi`, `@qwen`, or `@kilo` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 ---
 
@@ -106,7 +114,7 @@ Agents can also propose jobs directly via `chat_propose_job` — a proposal card
 ### Agent roles
 Assign roles to agents to steer their behavior — Planner, Builder, Reviewer, Researcher, or any custom role. Roles aren't a hard constraint — they're a persistent nudge. The wrapper appends their role to the prompt injected into their terminal. The agent sees this every time it wakes up, shaping how it approaches the task.
 
-Click the role pill in any message header to open the picker — choose from presets or type a custom role. Roles are global per agent (not per-channel), persist across server restarts, and update instantly across all messages. Clear a role by selecting "None".
+Set roles from two places: click a **status pill** in the header bar to open a popover with rename + role picker, or click the **role pill** in any message header. Choose from presets or type a custom role (max 20 characters). Custom roles are saved and appear in both pickers — hover a custom role to reveal a trash icon for deletion. Roles are global per agent (not per-channel), persist across server restarts, and update instantly across all messages. Clear a role by selecting "None".
 
 ### Rules
 Rules set the working style for your agents. Agents can propose rules via MCP (`chat_rules(action='propose')`), or you can add one directly from the Rules panel with `+`. Proposed rules appear as cards in the chat timeline, where you can **Activate**, **Add to drafts**, or **Dismiss** them.
@@ -175,6 +183,13 @@ Click the mic button (Chrome/Edge) to dictate messages instead of typing. Useful
 Per-channel snapshots that help agents catch up quickly. Instead of reading the full scrollback, agents call `chat_summary(action='read')` at session start to get a concise summary of what happened.
 
 Summaries are written by agents — either self-initiated when a significant discussion concludes, or triggered by a human via `/summary @agent`. The server enforces a 1000-character cap. Summaries persist across restarts in `summaries.json`.
+
+### Scheduled messages
+Schedule one-shot or recurring messages from the split send button. Click the clock icon next to Send to open the schedule popover — pick a date/time for one-shot, or check Recurring and set an interval (minutes, hours, or days). Scheduled messages fire as real chat messages from you, complete with @mentions that trigger agents automatically.
+
+A schedule strip above the composer shows active and paused schedules. For a single schedule, inline pause and delete controls appear directly in the strip. For multiple schedules, expand the strip to manage them. Schedules persist across server restarts (stored in `data/schedules.json`).
+
+The schedule popover validates that at least one agent is toggled before enabling the Schedule button — a yellow warning tells you what's needed.
 
 ### Slash commands
 Type `/` in the input to open a Slack-style autocomplete menu:
@@ -284,6 +299,31 @@ claude mcp add agentchattr --transport http http://127.0.0.1:8200/mcp
 }
 ```
 
+**Qwen** — add to `.qwen/settings.json` in your project root:
+```json
+{
+  "mcpServers": {
+    "agentchattr": {
+      "type": "http",
+      "url": "http://127.0.0.1:8200/mcp"
+    }
+  }
+}
+```
+
+**Kilo** — add to `~/.config/kilo/kilo.json`:
+```json
+{
+  "mcp": {
+    "agentchattr": {
+      "type": "remote",
+      "url": "http://127.0.0.1:8200/mcp",
+      "enabled": true
+    }
+  }
+}
+```
+
 ### Starting the server separately
 
 If you want to run the server without a launcher:
@@ -329,6 +369,24 @@ command = "gemini"
 cwd = ".."
 color = "#4285f4"
 label = "Gemini"
+
+[agents.kimi]
+command = "kimi"
+cwd = ".."
+color = "#1783ff"
+label = "Kimi"
+
+[agents.qwen]
+command = "qwen"
+cwd = ".."
+color = "#8b5cf6"
+label = "Qwen"
+
+[agents.kilo]
+command = "kilo"
+cwd = ".."
+color = "#f7f677"
+label = "Kilo"
 
 [routing]
 default = "none"            # "none" = only @mentions trigger agents
@@ -404,6 +462,7 @@ The wrapper registers with the server, watches for @mentions, reads recent chat 
 | `registry.py` | Runtime agent registry — slot assignment, identity claims, rename tracking |
 | `jobs.py` | Job store — JSON persistence, status tracking, threaded conversations |
 | `rules.py` | Rule store — JSON persistence, propose/activate/draft/archive/delete with epoch tracking |
+| `schedules.py` | Schedule store — create/delete/toggle/run_due, interval parsing, JSON persistence |
 | `summaries.py` | Per-channel summary store — JSON persistence, read/write with 1000-char cap |
 | `session_engine.py` | Session orchestration — phase advancement, turn triggering, prompt assembly |
 | `session_store.py` | Session persistence — run state, template loading/validation, custom template storage |
