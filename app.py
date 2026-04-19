@@ -1818,13 +1818,13 @@ async def trigger_agent_silent(request: Request):
     if not custom_prompt:
         if source_msg_id is not None:
             custom_prompt = (
-                f"mcp read #{channel} - you were mentioned, take appropriate action "
+                f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond "
                 f"- conversion request: use chat history to find message #{source_msg_id} "
                 f"and use chat_propose_job to propose it as a job with title<=80 chars and body<=500 chars."
             )
         else:
             custom_prompt = (
-                f"mcp read #{channel} - you were mentioned, take appropriate action "
+                f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond "
                 f"- conversion request: use chat_propose_job to propose a job from the referenced message."
             )
     # Resolve to instances if multi-instance

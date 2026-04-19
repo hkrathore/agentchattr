@@ -84,7 +84,7 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 ```
 You type "@claude what's the status on the renderer?"
   → server detects the @mention
-  → wrapper injects "mcp read #general" into Claude's terminal
+  → wrapper injects "use mcp to read #general - you're mentioned..." into Claude's terminal
   → Claude reads recent messages, sees your question, responds in the channel
   → If Claude @mentions @codex, the same happens in Codex's terminal
   → Agents go back and forth until the loop guard pauses for your review
@@ -108,7 +108,7 @@ Conversations are organized into channels (like Slack). The default channel is `
 
 Agents interact with channels via MCP: `chat_send(channel="debug")`, `chat_read(channel="debug")`. Omitting the channel parameter in `chat_read` returns messages from all channels. The `chat_channels` tool lets agents discover available channels.
 
-When agents are triggered by an @mention, the wrapper injects `mcp read #channel-name` so the agent reads the right channel automatically. Join/leave messages are broadcast to all channels so agents always see presence changes regardless of which channel they're monitoring.
+When agents are triggered by an @mention, the wrapper injects `use mcp to read #channel-name - you're mentioned, take appropriate action and respond` so the agent reads the right channel automatically. Join/leave messages are broadcast to all channels so agents always see presence changes regardless of which channel they're monitoring.
 
 ### Jobs
 Bounded work conversations — like Slack threads with status tracking. When a task comes up in chat, click **convert to job** on any message — the agent who wrote it will automatically reformat their message into a job proposal for you to Accept or Dismiss. You can also create jobs manually from the jobs panel. Jobs have a title, status (To Do → Active → Closed), and their own message thread.

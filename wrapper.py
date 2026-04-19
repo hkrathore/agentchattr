@@ -14,7 +14,7 @@ Cross-platform:
 How it works:
   1. Starts the agent CLI in an interactive terminal.
   2. Watches the queue file in the background for @mentions from the chat room.
-  3. When triggered, injects "mcp read #channel - you were mentioned, take appropriate action".
+  3. When triggered, injects "use mcp to read #channel - you're mentioned, take appropriate action and respond".
   4. The agent picks up the prompt as if the user typed it.
 """
 
@@ -507,9 +507,9 @@ def _queue_watcher(get_identity_fn, inject_fn, *, is_multi_instance: bool = Fals
                     if custom_prompt:
                         prompt = custom_prompt
                     elif job_id:
-                        prompt = f"mcp read job_id={job_id} - you were mentioned in a job thread, take appropriate action"
+                        prompt = f"use mcp to read job_id={job_id} - you're mentioned in a job thread, take appropriate action and respond"
                     else:
-                        prompt = f"mcp read #{channel} - you were mentioned, take appropriate action"
+                        prompt = f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond"
 
                     # Use current identity (may have changed via rename)
                     current_name, _ = get_identity_fn()
