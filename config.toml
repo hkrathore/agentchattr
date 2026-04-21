@@ -48,6 +48,36 @@ cwd = ".."
 color = "#f7f677"
 label = "Kilo"
 
+[agents.codebuddy]
+command = "codebuddy"
+cwd = ".."
+color = "#6C4DFF"
+label = "CodeBuddy"
+mcp_inject = "settings_file"
+mcp_settings_path = "~/.codebuddy/.mcp.json"
+mcp_transport = "http"
+mcp_http_key = "url"
+
+[agents.copilot]
+command = "copilot"
+cwd = ".."
+color = "#8534F3"
+label = "Copilot"
+mcp_inject = "settings_file"
+mcp_settings_path = "~/.copilot/mcp-config.json"
+mcp_transport = "http"
+mcp_http_key = "url"
+enter_backend = "wm_setfocus"
+
+[agents.minimax]
+type = "api"
+base_url = "https://api.minimax.io/v1"
+model = "MiniMax-M2.7"
+color = "#2fe898"
+label = "MiniMax"
+api_key_env = "MINIMAX_API_KEY"
+temperature = 1.0
+
 [routing]
 # "none" = only route on explicit @mention. "all" = route to all agents by default.
 default = "none"

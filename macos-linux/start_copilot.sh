@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
-# agentchattr - starts server (if not running) + Gemini wrapper
+# agentchattr - starts server (if not running) + GitHub Copilot CLI wrapper
+# Usage: sh start_copilot.sh
+# Requires the copilot CLI on PATH. First launch prompts GitHub login.
 cd "$(dirname "$0")/.."
 
 PYTHON_BIN=""
@@ -36,14 +38,14 @@ is_server_running() {
     ss -tlnp 2>/dev/null | grep -q ':8300 '
 }
 
-# Warn if ripgrep is missing (Gemini CLI can hang on init - upstream bug)
-if ! command -v rg >/dev/null 2>&1; then
+# Pre-flight: check that copilot CLI is installed
+if ! command -v copilot >/dev/null 2>&1; then
     echo ""
-    echo "  Warning: ripgrep (rg) not found on PATH."
-    echo "  Gemini CLI can hang on \"Initializing...\" for several minutes."
-    echo "  Fix: apt install ripgrep (Linux) or brew install ripgrep (macOS)"
-    echo "  See: https://github.com/google-gemini/gemini-cli/issues/13986"
+    echo "  Error: \"copilot\" was not found on PATH."
+    echo "  Install with: npm install -g @github/copilot"
+    echo "  See https://github.com/github/copilot-cli for details."
     echo ""
+    exit 1
 fi
 
 ensure_venv
@@ -71,4 +73,4 @@ if ! is_server_running; then
     done
 fi
 
-.venv/bin/python wrapper.py gemini
+.venv/bin/python wrapper.py copilot

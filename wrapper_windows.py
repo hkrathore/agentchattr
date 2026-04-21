@@ -13,10 +13,16 @@ if sys.platform != "win32":
     raise ImportError("wrapper_windows only works on Windows")
 
 kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+user32 = ctypes.WinDLL("user32", use_last_error=True)
 
 STD_INPUT_HANDLE = -10
 KEY_EVENT = 0x0001
 VK_RETURN = 0x0D
+
+# Window message constants used by the wm_setfocus Enter backend.
+WM_SETFOCUS = 0x0007
+WM_ACTIVATE = 0x0006
+WA_ACTIVE = 1
 
 
 class _CHAR_UNION(ctypes.Union):
@@ -55,16 +61,60 @@ def _write_key(handle, char: str, key_down: bool, vk: int = 0, scan: int = 0):
     kernel32.WriteConsoleInputW(handle, ctypes.byref(rec), 1, ctypes.byref(written))
 
 
-def inject(text: str, *, delay: float = 0.3):
-    """Inject text + Enter into the current console via WriteConsoleInput."""
+def _send_wm_setfocus():
+    """Tell the console window it just received focus — some Node TUIs
+    (GitHub Copilot CLI) gate Enter processing on focus state, so this
+    makes them accept injected Enter without an actual focus change."""
+    hwnd = kernel32.GetConsoleWindow()
+    if not hwnd:
+        return
+    user32.SendMessageW(hwnd, WM_SETFOCUS, 0, 0)
+    user32.SendMessageW(hwnd, WM_ACTIVATE, WA_ACTIVE, 0)
+
+
+def inject(text: str, *, delay: float = 0.3, enter_backend: str = "console_input"):
+    """Inject text + Enter into the current console via WriteConsoleInput.
+
+    Uses batch WriteConsoleInputW for the text (all records in one call)
+    then a separate Enter keystroke after a scaled delay.
+
+    `enter_backend` controls how the final Enter is delivered:
+      - "console_input" (default): standard WriteConsoleInput + VK_RETURN.
+        Works for Claude/Codex/Gemini/Kimi/Qwen/Kilo/etc.
+      - "wm_setfocus": fake-focus message (WM_SETFOCUS + WM_ACTIVATE) to
+        the console window before sending VK_RETURN. Needed for GitHub
+        Copilot CLI, whose Ink-based input layer ignores Enter events
+        when the console window is unfocused.
+    """
     handle = kernel32.GetStdHandle(STD_INPUT_HANDLE)
 
-    for ch in text:
-        _write_key(handle, ch, True)
-        _write_key(handle, ch, False)
+    # Build all key events at once (key down + key up per character)
+    n_events = len(text) * 2
+    if n_events > 0:
+        records = (_INPUT_RECORD * n_events)()
+        idx = 0
+        for ch in text:
+            for key_down in (True, False):
+                rec = records[idx]
+                rec.EventType = KEY_EVENT
+                evt = rec.Event.KeyEvent
+                evt.bKeyDown = key_down
+                evt.wRepeatCount = 1
+                evt.uChar.UnicodeChar = ch
+                evt.wVirtualKeyCode = 0
+                evt.wVirtualScanCode = 0
+                idx += 1
+        written = wintypes.DWORD(0)
+        kernel32.WriteConsoleInputW(handle, records, n_events, ctypes.byref(written))
 
-    # Let TUI process the text before sending Enter
-    time.sleep(delay)
+    # Scale delay with text length so longer prompts get more processing time
+    scaled_delay = max(delay, len(text) * 0.001)
+    time.sleep(scaled_delay)
+
+    if enter_backend == "wm_setfocus":
+        _send_wm_setfocus()
+        # Tiny pause for the window to process the focus message
+        time.sleep(0.05)
 
     _write_key(handle, "\r", True, vk=VK_RETURN, scan=0x1C)
     _write_key(handle, "\r", False, vk=VK_RETURN, scan=0x1C)
@@ -142,14 +192,7 @@ def get_activity_checker(pid_holder, agent_name="unknown", trigger_flag=None):
     _consecutive_idle = [0]
     _is_active = [False]
 
-    # Diagnostic log per agent
-    _debug_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), f"activity_debug_{agent_name}.log")
-    _debug_file = open(_debug_path, "w")
-    _poll_count = [0]
-
     def check():
-        _poll_count[0] += 1
-
         # External trigger: queue watcher injected a message → force active
         triggered = False
         if trigger_flag is not None and trigger_flag[0]:
@@ -161,10 +204,6 @@ def get_activity_checker(pid_holder, agent_name="unknown", trigger_flag=None):
         # Get buffer dimensions
         csbi = _CONSOLE_SCREEN_BUFFER_INFO()
         if not kernel32.GetConsoleScreenBufferInfo(handle, ctypes.byref(csbi)):
-            if triggered:
-                import time as _t
-                _debug_file.write(f"[{_t.strftime('%H:%M:%S')}] poll={_poll_count[0]} TRIGGERED active=True\n")
-                _debug_file.flush()
             return _is_active[0]
 
         rect = csbi.srWindow
@@ -213,27 +252,16 @@ def get_activity_checker(pid_holder, agent_name="unknown", trigger_flag=None):
             if _consecutive_idle[0] >= IDLE_COOLDOWN:
                 _is_active[0] = False
 
-        # Log: every poll when cells changed, every 10th poll otherwise, or on trigger
-        if n_changed > 0 or _poll_count[0] % 10 == 0 or triggered:
-            import time as _t
-            extra = " TRIGGERED" if triggered else ""
-            _debug_file.write(
-                f"[{_t.strftime('%H:%M:%S')}] poll={_poll_count[0]} "
-                f"changed={n_changed} significant={significant} "
-                f"idle_count={_consecutive_idle[0]} active={_is_active[0]}{extra}\n"
-            )
-            _debug_file.flush()
-
         return _is_active[0]
 
     return check
 
 
-def run_agent(command, extra_args, cwd, env, queue_file, agent, no_restart, start_watcher, strip_env=None, pid_holder=None, session_name=None, inject_env=None, inject_delay: float = 0.3):
+def run_agent(command, extra_args, cwd, env, queue_file, agent, no_restart, start_watcher, strip_env=None, pid_holder=None, session_name=None, inject_env=None, inject_delay: float = 0.3, enter_backend: str = "console_input"):
     """Run agent as a direct subprocess, inject via Win32 console."""
     if inject_env:
         env = {**env, **inject_env}
-    start_watcher(lambda text: inject(text, delay=inject_delay))
+    start_watcher(lambda text: inject(text, delay=inject_delay, enter_backend=enter_backend))
 
     while True:
         try:

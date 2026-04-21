@@ -1,5 +1,7 @@
 @echo off
-REM agentchattr — starts server (if not running) + Gemini wrapper
+REM agentchattr - starts server (if not running) + GitHub Copilot CLI wrapper
+REM Usage: start_copilot.bat
+REM Requires the copilot CLI on PATH. First launch prompts GitHub login.
 cd /d "%~dp0.."
 
 REM Auto-create venv and install deps on first run
@@ -9,26 +11,16 @@ if not exist ".venv" (
 )
 call .venv\Scripts\activate.bat
 
-REM Pre-flight: check that gemini CLI is installed
-where gemini >nul 2>&1
+REM Pre-flight: check that copilot CLI is installed
+where copilot >nul 2>&1
 if %errorlevel% neq 0 (
     echo.
-    echo   Error: "gemini" was not found on PATH.
-    echo   Install it first, then try again.
+    echo   Error: "copilot" was not found on PATH.
+    echo   Install with: npm install -g @github/copilot
+    echo   See https://github.com/github/copilot-cli for details.
     echo.
     pause
     exit /b 1
-)
-
-REM Warn if ripgrep is missing (Gemini CLI can hang on init - upstream bug)
-where rg >nul 2>&1
-if %errorlevel% neq 0 (
-    echo.
-    echo   Warning: ripgrep (rg) not found on PATH.
-    echo   Gemini CLI can hang on "Initializing..." for several minutes.
-    echo   Fix: choco install ripgrep  or  winget install BurntSushi.ripgrep
-    echo   See: https://github.com/google-gemini/gemini-cli/issues/13986
-    echo.
 )
 
 REM Start server if not already running, then wait for it
@@ -43,7 +35,7 @@ if %errorlevel% neq 0 (
     goto :wait_server
 )
 
-python wrapper.py gemini
+python wrapper.py copilot
 if %errorlevel% neq 0 (
     echo.
     echo   Agent exited unexpectedly. Check the output above.

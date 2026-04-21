@@ -11,7 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File
 from fastapi.requests import Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from store import MessageStore
@@ -296,6 +296,7 @@ def configure(cfg: dict, session_token: str = ""):
         agent_names=agent_names,
         default_mention=cfg.get("routing", {}).get("default", "none"),
         max_hops=max_hops,
+        online_checker=lambda: set(registry.get_active_names()) if registry else set(),
     )
     agents = AgentTrigger(registry, data_dir=data_dir)
 
@@ -370,7 +371,7 @@ def configure(cfg: dict, session_token: str = ""):
 
                 # Crash timeout: if a wrapper hasn't heartbeated for 60s,
                 # it's dead — deregister it to free the slot.
-                _CRASH_TIMEOUT = 60
+                _CRASH_TIMEOUT = 15
                 registered = set(registry.get_all_names())
                 for name in registered:
                     with mcp_bridge._presence_lock:
@@ -392,9 +393,7 @@ def configure(cfg: dict, session_token: str = ""):
                                         "new_name": renamed["new"],
                                     })
                                     asyncio.run_coroutine_threadsafe(_broadcast(rename_event), _event_loop)
-                            channels = room_settings.get("channels", ["general"])
-                            for ch in channels:
-                                store.add(name, f"{name} disconnected (timeout)", msg_type="leave", channel=ch)
+                            store.add(name, f"{name} disconnected (timeout)", msg_type="leave", channel=_last_active_channel)
                             _posted_leave.add(name)
 
                 # Re-fetch registered names (may have changed from crash timeout above)
@@ -416,9 +415,7 @@ def configure(cfg: dict, session_token: str = ""):
                     # Post leave message ONCE per offline transition (debounced)
                     if name not in _posted_leave:
                         _posted_leave.add(name)
-                        channels = room_settings.get("channels", ["general"])
-                        for ch in channels:
-                            store.add(name, f"{name} disconnected", msg_type="leave", channel=ch)
+                        store.add(name, f"{name} disconnected", msg_type="leave", channel=_last_active_channel)
 
                 # Clear leave debounce for agents that came back online
                 _posted_leave -= currently_online
@@ -435,9 +432,7 @@ def configure(cfg: dict, session_token: str = ""):
                         continue
                     if not registry.is_registered(name) and name not in _posted_leave:
                         _posted_leave.add(name)
-                        channels = room_settings.get("channels", ["general"])
-                        for ch in channels:
-                            store.add(name, f"{name} disconnected", msg_type="leave", channel=ch)
+                        store.add(name, f"{name} disconnected", msg_type="leave", channel=_last_active_channel)
 
                 if _known_online != currently_online and _event_loop:
                     asyncio.run_coroutine_threadsafe(broadcast_status(), _event_loop)
@@ -503,6 +498,7 @@ def configure(cfg: dict, session_token: str = ""):
 # --- Store → WebSocket bridge ---
 
 _event_loop = None  # set by run.py after starting the event loop
+_last_active_channel: str = "general"  # last channel any message was sent in
 
 
 def set_event_loop(loop):
@@ -660,6 +656,11 @@ async def _handle_new_message(msg: dict):
     msg_type = msg.get("type", "chat")
     sender = msg.get("sender", "")
     channel = msg.get("channel", "general")
+
+    # Track last active channel for leave/join messages (skip system messages)
+    global _last_active_channel
+    if msg_type not in ("system", "leave", "join"):
+        _last_active_channel = channel
     # Strip @mentions to find the slash command (e.g. "@claude @codex /hatmaking")
     stripped = _re.sub(r"@[\w-]+\s*", "", text).strip().lower()
     _broadcast_cmds = ("/hatmaking", "/artchallenge", "/roastreview", "/poetry")
@@ -1195,7 +1196,8 @@ async def websocket_endpoint(websocket: WebSocket):
                                 channel=channel,
                                 metadata={"rule_id": rule["id"], "text": text, "status": "pending"},
                             )
-                            await broadcast(msg)
+                            # store.add() fires _on_store_message → broadcast already.
+                            # Do NOT call broadcast(msg) again here.
                 continue
 
             elif event.get("type") in ("decision_approve", "rule_activate"):
@@ -1446,6 +1448,67 @@ async def upload_image(file: UploadFile = File(...)):
     })
 
 
+# --- Export / Import ---
+
+@app.get("/api/export")
+async def export_history():
+    """Download a zip archive of project history."""
+    import archive as _archive
+    import time as _time
+    try:
+        zip_bytes = _archive.build_export(
+            store, jobs, rules, summaries,
+            app_version=config.get("server", {}).get("version", ""),
+        )
+    except Exception as exc:
+        return JSONResponse({"error": f"export failed: {exc}"}, status_code=500)
+    filename = f"agentchattr-export-{_time.strftime('%Y%m%d-%H%M%S')}.zip"
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@app.post("/api/import")
+async def import_history(file: UploadFile = File(...)):
+    """Upload a zip archive and merge it into current stores."""
+    import archive as _archive
+    if not file.filename or not file.filename.lower().endswith(".zip"):
+        return JSONResponse({"error": "unsupported file type: expected .zip"}, status_code=400)
+    content = await file.read()
+    if len(content) > _archive.MAX_IMPORT_SIZE:
+        return JSONResponse(
+            {"error": f"file too large (max {_archive.MAX_IMPORT_SIZE // 1024 // 1024}MB)"},
+            status_code=400,
+        )
+    channel_list = list(room_settings.get("channels", ["general"]))
+    max_ch = room_settings.get("max_channels", 8)
+    report = _archive.import_archive(
+        content, store, jobs, rules, summaries,
+        channel_list, max_channels=max_ch,
+    )
+    if not report.get("ok"):
+        error = report.get("error", "import failed")
+        status = 409 if "already running" in error else 400
+        return JSONResponse({"error": error}, status_code=status)
+    # Update channel list if new channels were created
+    if report["channels"]["created"]:
+        room_settings["channels"] = channel_list
+        _save_settings()
+        await broadcast_settings()
+    # Tell all connected clients to reload (picks up imported messages)
+    data = json.dumps({"type": "reload"})
+    dead = set()
+    for client in list(ws_clients):
+        try:
+            await client.send_text(data)
+        except Exception:
+            dead.add(client)
+    ws_clients.difference_update(dead)
+    return JSONResponse(report)
+
+
 @app.get("/api/messages")
 async def get_messages(since_id: int = 0, limit: int = 50, channel: str = ""):
     ch = channel if channel else None
@@ -1630,6 +1693,58 @@ async def demote_proposal(msg_id: int):
     return updated or {"ok": True}
 
 
+@app.post("/api/messages/{msg_id}/resolve_decision")
+async def resolve_decision(msg_id: int, request: Request):
+    """Resolve an inline decision card by recording the chosen option."""
+    body = await request.json()
+    chosen = body.get("choice", "")
+    if not chosen:
+        return JSONResponse({"error": "choice is required"}, status_code=400)
+    # Atomic check + resolve under lock to prevent double-click race
+    error = None
+    channel = "general"
+    sender = ""
+    with store._lock:
+        msg = None
+        for m in store._messages:
+            if m["id"] == msg_id:
+                msg = m
+                break
+        if not msg:
+            error = ("message not found", 404)
+        elif msg.get("type") != "decision":
+            error = ("not a decision message", 400)
+        else:
+            meta = msg.get("metadata") or {}
+            if meta.get("resolved"):
+                error = ("already resolved", 400)
+            else:
+                valid_choices = meta.get("choices", [])
+                if valid_choices and chosen not in valid_choices:
+                    error = (f"invalid choice. Valid: {valid_choices}", 400)
+                else:
+                    meta["resolved"] = True
+                    meta["chosen"] = chosen
+                    msg["metadata"] = meta
+                    channel = msg.get("channel", "general")
+                    sender = msg.get("sender", "")
+                    store._rewrite()
+    if error:
+        return JSONResponse({"error": error[0]}, status_code=error[1])
+    # Post the chosen answer as a regular chat message tagged @sender
+    username = room_settings.get("username", "user")
+    reply_text = f"@{sender} {chosen}" if sender else chosen
+    try:
+        store.add(username, reply_text, reply_to=msg_id, channel=channel)
+    except Exception:
+        import traceback; traceback.print_exc()
+    # Broadcast updated decision card so the UI swaps buttons to resolved state
+    updated = store.get_by_id(msg_id)
+    if updated:
+        await _broadcast(json.dumps({"type": "message_update", "message": updated}))
+    return {"ok": True, "chosen": chosen}
+
+
 @app.post("/api/messages/{msg_id}/resolve_rule_proposal")
 async def resolve_rule_proposal(msg_id: int, request: Request):
     """Activate or dismiss a rule proposal."""
@@ -1714,13 +1829,13 @@ async def trigger_agent_silent(request: Request):
     if not custom_prompt:
         if source_msg_id is not None:
             custom_prompt = (
-                f"mcp read #{channel} - you were mentioned, take appropriate action "
+                f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond "
                 f"- conversion request: use chat history to find message #{source_msg_id} "
                 f"and use chat_propose_job to propose it as a job with title<=80 chars and body<=500 chars."
             )
         else:
             custom_prompt = (
-                f"mcp read #{channel} - you were mentioned, take appropriate action "
+                f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond "
                 f"- conversion request: use chat_propose_job to propose a job from the referenced message."
             )
     # Resolve to instances if multi-instance

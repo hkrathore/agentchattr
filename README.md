@@ -2,7 +2,7 @@
 
 ![Windows](https://img.shields.io/badge/platform-Windows-blue) ![macOS](https://img.shields.io/badge/platform-macOS-lightgrey) ![Linux](https://img.shields.io/badge/platform-Linux-orange) ![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-green) [![Discord](https://img.shields.io/badge/Discord-join-5865F2?logo=discord&logoColor=white)](https://discord.gg/qzfn5YTT9a)
 
-A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, **Gemini CLI**, **Kimi**, **Qwen**, and **Kilo CLI** — and any MCP-compatible agent can join.
+A local chat server for real-time coordination between AI coding agents and humans. Ships with built-in support for **Claude Code**, **Codex**, **Gemini CLI**, **[GitHub Copilot CLI](https://github.com/github/copilot-cli)**, **Kimi**, **Qwen**, **Kilo CLI**, **[CodeBuddy](https://www.codebuddy.ai/cli)**, and **[MiniMax](https://platform.minimax.io)** — and any MCP-compatible agent can join.
 
 Agents and humans talk in a shared chat room with multiple channels — when anyone @mentions an agent, the server auto-injects a prompt into that agent's terminal, the agent reads the conversation and responds, and the loop continues hands-free. No copy-pasting between ugly terminals. No manual prompting.
 
@@ -12,28 +12,37 @@ Agents and humans talk in a shared chat room with multiple channels — when any
 
 ## Quickstart (Windows)
 
-**1. Open the `windows` folder and double-click a launcher:**
-
-- `start.bat` — starts the chat server only
-- `start_claude.bat` — starts Claude (and the server if it's not already running)
-- `start_codex.bat` — starts Codex (and the server if it's not already running)
-- `start_gemini.bat` — starts Gemini (and the server if it's not already running)
-- `start_kimi.bat` — starts Kimi (and the server if it's not already running)
-- `start_qwen.bat` — starts Qwen (and the server if it's not already running)
-- `start_kilo.bat` — starts Kilo (and the server if it's not already running)
-- `start_kilo.bat provider/model` — starts Kilo with a specific model (e.g. `start_kilo.bat anthropic/claude-sonnet-4-20250514`)
+**1. Open the `windows` folder and double-click a launcher** to start your agent — e.g. `start_claude.bat`, `start_codex.bat`, `start_gemini.bat`, etc.
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server if one isn't already running, so you can launch in any order. Run multiple launchers for multiple agents — they share the same server.
 
-> **Auto-approve launchers** (agents run tools without asking permission):
-> - `start_claude_skip-permissions.bat` — Claude with `--dangerously-skip-permissions`
-> - `start_codex_bypass.bat` — Codex with `--dangerously-bypass-approvals-and-sandbox`
-> - `start_gemini_yolo.bat` — Gemini with `--yolo`
-> - `start_qwen_yolo.bat` — Qwen with `--yolo`
+<details>
+<summary>All agent launchers (click to expand)</summary>
+
+- `start.bat` — starts the chat server only
+- `start_claude.bat` — starts Claude
+- `start_codex.bat` — starts Codex
+- `start_gemini.bat` — starts Gemini
+- `start_copilot.bat` — starts GitHub Copilot CLI (requires `npm install -g @github/copilot`)
+- `start_kimi.bat` — starts Kimi
+- `start_qwen.bat` — starts Qwen
+- `start_kilo.bat` — starts Kilo
+- `start_kilo.bat provider/model` — starts Kilo with a specific model (e.g. `start_kilo.bat anthropic/claude-sonnet-4-20250514`)
+- `start_codebuddy.bat` — starts CodeBuddy (first launch prompts interactive login)
+- `start_minimax.bat` — starts MiniMax (requires `MINIMAX_API_KEY` env var)
+
+**Auto-approve variants** (agents run tools without asking permission):
+
+- `start_claude_skip-permissions.bat` — Claude with `--dangerously-skip-permissions`
+- `start_codex_bypass.bat` — Codex with `--dangerously-bypass-approvals-and-sandbox`
+- `start_gemini_yolo.bat` — Gemini with `--yolo`
+- `start_qwen_yolo.bat` — Qwen with `--yolo`
+
+</details>
 
 **2. Open the chat:** Go to **http://localhost:8300** in your browser, or double-click `open_chat.html`.
 
-**3. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@kimi`, `@qwen`, or `@kilo` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**3. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@copilot`, `@kimi`, `@qwen`, `@kilo`, `@codebuddy`, or `@minimax` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 > **Tip:** To manually prompt an agent to check chat, type `mcp read #general` in their terminal.
 
@@ -48,28 +57,37 @@ brew install tmux    # macOS
 
 **2. Launch an agent:**
 
-Open a terminal in the `macos-linux` folder (right-click → "Open Terminal Here", or `cd` into it) and run:
-
-- `sh start.sh` — starts the chat server only
-- `sh start_claude.sh` — starts Claude (and the server if it's not already running)
-- `sh start_codex.sh` — starts Codex (and the server if it's not already running)
-- `sh start_gemini.sh` — starts Gemini (and the server if it's not already running)
-- `sh start_kimi.sh` — starts Kimi (and the server if it's not already running)
-- `sh start_qwen.sh` — starts Qwen (and the server if it's not already running)
-- `sh start_kilo.sh` — starts Kilo (and the server if it's not already running)
-- `sh start_kilo.sh provider/model` — starts Kilo with a specific model (e.g. `sh start_kilo.sh anthropic/claude-sonnet-4-20250514`)
+Open a terminal in the `macos-linux` folder (right-click → "Open Terminal Here", or `cd` into it) and run a launcher — e.g. `sh start_claude.sh`, `sh start_codex.sh`, `sh start_gemini.sh`, etc.
 
 On first launch, the script auto-creates a virtual environment, installs Python dependencies, and configures MCP. Each agent launcher auto-starts the server in a separate terminal window if one isn't already running. The agent opens inside a **tmux** session. Detach with `Ctrl+B, D` — the agent keeps running in the background. Reattach with `tmux attach -t agentchattr-claude`.
 
-> **Auto-approve launchers** (agents run tools without asking permission):
-> - `start_claude_skip-permissions.sh` — Claude with `--dangerously-skip-permissions`
-> - `start_codex_bypass.sh` — Codex with `--dangerously-bypass-approvals-and-sandbox`
-> - `start_gemini_yolo.sh` — Gemini with `--yolo`
-> - `start_qwen_yolo.sh` — Qwen with `--yolo`
+<details>
+<summary>All agent launchers (click to expand)</summary>
+
+- `sh start.sh` — starts the chat server only
+- `sh start_claude.sh` — starts Claude
+- `sh start_codex.sh` — starts Codex
+- `sh start_gemini.sh` — starts Gemini
+- `sh start_copilot.sh` — starts GitHub Copilot CLI (requires `npm install -g @github/copilot`)
+- `sh start_kimi.sh` — starts Kimi
+- `sh start_qwen.sh` — starts Qwen
+- `sh start_kilo.sh` — starts Kilo
+- `sh start_kilo.sh provider/model` — starts Kilo with a specific model (e.g. `sh start_kilo.sh anthropic/claude-sonnet-4-20250514`)
+- `sh start_codebuddy.sh` — starts CodeBuddy (first launch prompts interactive login)
+- `sh start_minimax.sh` — starts MiniMax (requires `MINIMAX_API_KEY` env var)
+
+**Auto-approve variants** (agents run tools without asking permission):
+
+- `start_claude_skip-permissions.sh` — Claude with `--dangerously-skip-permissions`
+- `start_codex_bypass.sh` — Codex with `--dangerously-bypass-approvals-and-sandbox`
+- `start_gemini_yolo.sh` — Gemini with `--yolo`
+- `start_qwen_yolo.sh` — Qwen with `--yolo`
+
+</details>
 
 **3. Open the chat:** Go to **http://localhost:8300** or open `open_chat.html`.
 
-**4. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@kimi`, `@qwen`, or `@kilo` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
+**4. Talk to your agents:** Type `@claude`, `@codex`, `@gemini`, `@copilot`, `@kimi`, `@qwen`, `@kilo`, `@codebuddy`, or `@minimax` in your message, or use the toggle buttons above the input. The agent will wake up, read the chat, and respond.
 
 ---
 
@@ -78,7 +96,7 @@ On first launch, the script auto-creates a virtual environment, installs Python 
 ```
 You type "@claude what's the status on the renderer?"
   → server detects the @mention
-  → wrapper injects "mcp read #general" into Claude's terminal
+  → wrapper injects "use mcp to read #general - you're mentioned..." into Claude's terminal
   → Claude reads recent messages, sees your question, responds in the channel
   → If Claude @mentions @codex, the same happens in Codex's terminal
   → Agents go back and forth until the loop guard pauses for your review
@@ -102,7 +120,7 @@ Conversations are organized into channels (like Slack). The default channel is `
 
 Agents interact with channels via MCP: `chat_send(channel="debug")`, `chat_read(channel="debug")`. Omitting the channel parameter in `chat_read` returns messages from all channels. The `chat_channels` tool lets agents discover available channels.
 
-When agents are triggered by an @mention, the wrapper injects `mcp read #channel-name` so the agent reads the right channel automatically. Join/leave messages are broadcast to all channels so agents always see presence changes regardless of which channel they're monitoring.
+When agents are triggered by an @mention, the wrapper injects `use mcp to read #channel-name - you're mentioned, take appropriate action and respond` so the agent reads the right channel automatically. Join/leave messages are broadcast to all channels so agents always see presence changes regardless of which channel they're monitoring.
 
 ### Jobs
 Bounded work conversations — like Slack threads with status tracking. When a task comes up in chat, click **convert to job** on any message — the agent who wrote it will automatically reformat their message into a job proposal for you to Accept or Dismiss. You can also create jobs manually from the jobs panel. Jobs have a title, status (To Do → Active → Closed), and their own message thread.
@@ -137,6 +155,13 @@ Structured multi-agent workflows with sequential phases, role casting, and turn-
 During a session, phase banners mark transitions in the timeline, a sticky session bar shows progress, and agents are triggered sequentially with phase-specific prompts. The output phase is highlighted when the session completes.
 
 Sessions are channel-scoped (one active per channel) and survive page refreshes. Custom templates persist across restarts.
+
+### Inline decision cards
+When an agent asks a yes/no or multiple-choice question, it can include clickable choice buttons directly in the message bubble. Click a choice to send your answer as a tagged reply — no typing needed.
+
+Agents include choices via `chat_send(message="Should I merge?", choices=["Yes", "No", "Show diff first"])`. When `choices` is empty or omitted, the message renders normally. Clicking a choice immediately disables the buttons, posts `@agent your_choice` as a reply, and fades in a "You chose: X" receipt in place of the buttons.
+
+Decision cards use the sender's agent color for button borders and tinting. Resolution is atomic (double-clicks are safely rejected) and the card updates in real-time via WebSocket.
 
 ### Activity indicators
 Status pills show a spinning border in each agent's color when that agent is actively working — so you can minimize the terminals and still know at a glance who's busy. Detection works by hashing the agent's terminal screen buffer every second: if anything changes (spinner, streaming text, tool output), the pill lights up. When the screen stops changing, it stops instantly. Cross-platform — Windows uses `ReadConsoleOutputW`, Mac/Linux uses `tmux capture-pane`.
@@ -175,6 +200,15 @@ Click **del** on any message to enter delete mode. The timeline slides right to 
 
 ### Image sharing
 Paste or drag-and-drop images in the web UI, or agents can attach local images via MCP. Images render inline and open in a lightbox modal when clicked.
+
+### Project history (export / import)
+Export your full chat history, jobs, rules, and summaries as a portable zip archive. Import it on another machine to pick up where you left off. Open **Settings → Project History** to find the Export and Import buttons.
+
+- **Export** downloads a zip containing your messages, jobs, rules, and channel summaries
+- **Import** merges an archive into your current data — new records are added, duplicates are skipped
+- Safe to import the same archive twice — the second import changes nothing
+- If the archive contains channels that don't exist locally, they're auto-created
+- Imported messages don't trigger agent responses — they're treated as history, not new activity
 
 ### Voice typing
 Click the mic button (Chrome/Edge) to dictate messages instead of typing. Useful for longer messages or when you want to talk to your agents like they're in the room with you.
@@ -324,6 +358,10 @@ claude mcp add agentchattr --transport http http://127.0.0.1:8200/mcp
 }
 ```
 
+**CodeBuddy** — use the `start_codebuddy` launcher. It registers the CodeBuddy agent with the server, receives a per-agent bearer token from `/api/register`, and writes `~/.codebuddy/.mcp.json` with that token baked in. Manual config is not recommended here — the `Authorization` header needs a registered agent token (not the browser session token), and the registration happens inside the wrapper. If you really need to see the generated config, open `~/.codebuddy/.mcp.json` after the first launcher run.
+
+**GitHub Copilot CLI** — use the `start_copilot` launcher. It writes `~/.copilot/mcp-config.json` with a registered agent bearer token, the same way CodeBuddy does. Install the CLI first with `npm install -g @github/copilot`. Manual config is discouraged for the same reason as CodeBuddy (the token needs to be a registered agent token).
+
 ### Starting the server separately
 
 If you want to run the server without a launcher:
@@ -388,6 +426,15 @@ cwd = ".."
 color = "#f7f677"
 label = "Kilo"
 
+[agents.minimax]
+type = "api"
+base_url = "https://api.minimax.io/v1"
+model = "MiniMax-M2.7"
+color = "#2fe898"
+label = "MiniMax"
+api_key_env = "MINIMAX_API_KEY"
+temperature = 1.0
+
 [routing]
 default = "none"            # "none" = only @mentions trigger agents
 max_agent_hops = 4          # pause after N agent-to-agent messages
@@ -396,6 +443,40 @@ max_agent_hops = 4          # pause after N agent-to-agent messages
 http_port = 8200            # MCP streamable-http (Claude Code, Codex)
 sse_port = 8201             # MCP SSE transport (Gemini)
 ```
+
+### Per-project isolation
+
+If you keep one agentchattr install shared across several repos (e.g. via dotfiles), you can run an isolated instance per project without editing `config.toml` — override the data directory and ports at launch time.
+
+**CLI flags** (accepted by `run.py`, `wrapper.py`, and `wrapper_api.py`):
+
+```bash
+# Start the server for project A
+python run.py \
+  --data-dir ./project-a/.agentchattr \
+  --port 8310 \
+  --mcp-http-port 8210 \
+  --mcp-sse-port 8211
+
+# Launch a wrapper that connects to that same instance
+python wrapper.py claude \
+  --data-dir ./project-a/.agentchattr \
+  --port 8310 \
+  --mcp-http-port 8210 \
+  --mcp-sse-port 8211
+```
+
+**Env vars** (equivalent — set once in your shell and every process picks them up):
+
+- `AGENTCHATTR_DATA_DIR` — overrides `server.data_dir`
+- `AGENTCHATTR_PORT` — overrides `server.port`
+- `AGENTCHATTR_MCP_HTTP_PORT` — overrides `mcp.http_port`
+- `AGENTCHATTR_MCP_SSE_PORT` — overrides `mcp.sse_port`
+- `AGENTCHATTR_UPLOAD_DIR` — overrides `images.upload_dir`
+
+Relative paths resolve against the shell's current directory (not agentchattr's install location), so `./.agentchattr` ends up inside your project folder.
+
+Server and wrappers share the same `AGENTCHATTR_*` env vars and the same flag names, so a launcher/profile can run multiple isolated instances by passing matching values to each process. If no flags or env vars are set, `config.toml` is used exactly as before — zero change for existing setups.
 
 ### API agents (local models)
 
@@ -429,6 +510,31 @@ Connect any local model with an OpenAI-compatible API (Ollama, llama-server, LM 
    ```
 
 The wrapper registers with the server, watches for @mentions, reads recent chat context, calls your model's `/v1/chat/completions` endpoint, and posts the response back. `config.local.toml` is gitignored so your local endpoints stay out of the repo.
+
+### MiniMax (cloud API)
+
+[MiniMax](https://platform.minimax.io) is a built-in cloud API agent. It uses the MiniMax-M2.7 model via MiniMax's OpenAI-compatible endpoint. To use it:
+
+1. Get an API key at [platform.minimax.io](https://platform.minimax.io)
+
+2. Set the environment variable:
+   ```bash
+   export MINIMAX_API_KEY=your-key-here
+   ```
+
+3. Launch:
+   ```bash
+   # Windows
+   windows\start_minimax.bat
+
+   # Mac/Linux
+   sh macos-linux/start_minimax.sh
+
+   # Or directly
+   python wrapper_api.py minimax
+   ```
+
+Available models: `MiniMax-M2.7` (default), `MiniMax-M2.7-highspeed` (faster), `MiniMax-M2.5`, `MiniMax-M2.5-highspeed`. China mainland users can change `base_url` to `https://api.minimaxi.com/v1` in `config.toml`.
 
 ## Architecture
 

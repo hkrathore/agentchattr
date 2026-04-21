@@ -14,7 +14,7 @@ Cross-platform:
 How it works:
   1. Starts the agent CLI in an interactive terminal.
   2. Watches the queue file in the background for @mentions from the chat room.
-  3. When triggered, injects "mcp read #channel - you were mentioned, take appropriate action".
+  3. When triggered, injects "use mcp to read #channel - you're mentioned, take appropriate action and respond".
   4. The agent picks up the prompt as if the user typed it.
 """
 
@@ -36,7 +36,7 @@ SERVER_NAME = "agentchattr"
 # ---------------------------------------------------------------------------
 
 def _write_json_mcp_settings(config_file: Path, url: str, transport: str = "http",
-                              *, token: str = "") -> Path:
+                              *, token: str = "", http_key: str = "httpUrl") -> Path:
     """Write/merge a settings-style JSON file with nested mcpServers config.
 
     Preserves existing servers in the file — only updates the agentchattr entry.
@@ -45,6 +45,12 @@ def _write_json_mcp_settings(config_file: Path, url: str, transport: str = "http
       - "httpUrl" key (not "url") for streamable-http transport
       - "url" key for SSE transport
       - "trust": true to skip per-call approval prompts
+
+    `http_key` controls which JSON key names the HTTP transport URL. Defaults
+    to "httpUrl" (Gemini/Qwen). Providers like CodeBuddy that follow the
+    standard MCP shape should set `mcp_http_key = "url"` in their config.
+    Only affects settings_file / env injector modes (not the Claude flag
+    writer or Kilo env_content writer).
     """
     config_file.parent.mkdir(parents=True, exist_ok=True)
     existing: dict = {}
@@ -54,9 +60,10 @@ def _write_json_mcp_settings(config_file: Path, url: str, transport: str = "http
         except Exception:
             pass
     servers = existing.get("mcpServers", {})
-    # Gemini CLI uses "httpUrl" for streamable-http, "url" for SSE
+    # Default: Gemini-style "httpUrl" for HTTP. Override with http_key="url"
+    # for providers that follow the standard MCP shape (e.g. CodeBuddy).
     if transport in ("http", "streamable-http"):
-        entry: dict = {"type": "http", "httpUrl": url, "trust": True}
+        entry: dict = {"type": "http", http_key: url, "trust": True}
     else:
         entry = {"type": transport, "url": url, "trust": True}
     if token:
@@ -132,15 +139,19 @@ _BUILTIN_DEFAULTS: dict[str, dict] = {
         "mcp_inject": "env",
         "mcp_env_var": "GEMINI_CLI_SYSTEM_SETTINGS_PATH",
         "mcp_transport": "http",  # streamable-http; SSE has blocking issues in Gemini 0.32.x
+        "mcp_merge_project": True,
     },
     "codex": {
         "mcp_inject": "proxy_flag",
         "mcp_proxy_flag_template": '-c mcp_servers.{server}.url="{url}"',
+        # mcp_merge_project disabled — Codex reads .mcp.json natively,
+        # and duplicate detection is name-based only (e.g. unityMCP vs unity-mcp)
     },
     "kimi": {
         "mcp_inject": "flag",
         "mcp_flag": "--mcp-config-file",
         "mcp_transport": "http",
+        "mcp_merge_project": True,
     },
     "kilo": {
         "mcp_inject": "env_content",
@@ -199,17 +210,23 @@ def _apply_mcp_inject(
     transport = inject_cfg.get("mcp_transport", "http")
     server_url = _get_server_url(mcp_cfg or {}, transport)
 
+    http_key = inject_cfg.get("mcp_http_key", "httpUrl")
+
     if mode == "settings_file":
-        # Write a settings JSON file at a user-specified path (e.g. .qwen/settings.json)
+        # Write a settings JSON file at a user-specified path (e.g. .qwen/settings.json,
+        # or ~/.codebuddy/.mcp.json for user-scope configs).
         raw_path = inject_cfg.get("mcp_settings_path", "")
         if not raw_path:
             raise ValueError(f"mcp_inject = 'settings_file' requires mcp_settings_path")
-        target = Path(raw_path)
+        # Expand ~ to user home (e.g. ~/.codebuddy/.mcp.json), then resolve
+        # relative paths against project_dir/CWD as before.
+        target = Path(raw_path).expanduser()
         if not target.is_absolute():
             base = Path(project_dir) if project_dir else Path.cwd()
             target = base / target
         settings_path = _write_json_mcp_settings(target, server_url,
-                                                  transport=transport, token=token)
+                                                  transport=transport, token=token,
+                                                  http_key=http_key)
         # Optionally set an env var pointing to the settings file
         env_var = inject_cfg.get("mcp_env_var")
         if env_var:
@@ -222,8 +239,32 @@ def _apply_mcp_inject(
             raise ValueError(f"mcp_inject = 'env' requires mcp_env_var")
         settings_path = _write_json_mcp_settings(
             config_dir / f"{instance_name}-settings.json",
-            server_url, transport=transport, token=token,
+            server_url, transport=transport, token=token, http_key=http_key,
         )
+        # Merge project .mcp.json servers into the settings file
+        merge_project = inject_cfg.get("mcp_merge_project", False)
+        if merge_project and project_dir and settings_path:
+            project_servers = _read_project_mcp_servers(project_dir)
+            if project_servers:
+                try:
+                    data = json.loads(settings_path.read_text("utf-8"))
+                    servers = data.get("mcpServers", {})
+                    for name, cfg in project_servers.items():
+                        if name not in servers:
+                            # Normalize url key for providers that expect "httpUrl"
+                            # (Gemini/Qwen). For standard-MCP providers with
+                            # http_key="url", leave existing "url" entries as-is.
+                            entry = dict(cfg)
+                            srv_type = entry.get("type", "http")
+                            if srv_type in ("http", "streamable-http") and http_key != "url":
+                                if "url" in entry and http_key not in entry:
+                                    entry[http_key] = entry.pop("url")
+                            entry.setdefault("trust", True)
+                            servers[name] = entry
+                    data["mcpServers"] = servers
+                    settings_path.write_text(json.dumps(data, indent=2) + "\n", "utf-8")
+                except Exception:
+                    pass
         inject_env[env_var] = str(settings_path)
 
     elif mode == "flag":
@@ -466,9 +507,9 @@ def _queue_watcher(get_identity_fn, inject_fn, *, is_multi_instance: bool = Fals
                     if custom_prompt:
                         prompt = custom_prompt
                     elif job_id:
-                        prompt = f"mcp read job_id={job_id} - you were mentioned in a job thread, take appropriate action"
+                        prompt = f"use mcp to read job_id={job_id} - you're mentioned in a job thread, take appropriate action and respond"
                     else:
-                        prompt = f"mcp read #{channel} - you were mentioned, take appropriate action"
+                        prompt = f"use mcp to read #{channel} - you're mentioned, take appropriate action and respond"
 
                     # Use current identity (may have changed via rename)
                     current_name, _ = get_identity_fn()
@@ -501,7 +542,10 @@ def _queue_watcher(get_identity_fn, inject_fn, *, is_multi_instance: bool = Fals
                     if first_mention and is_multi_instance:
                         prompt += _IDENTITY_HINT
                         first_mention = False
-                    inject_fn(prompt)
+                    # Flatten to single line — multi-line text triggers paste
+                    # detection in CLIs (Claude Code shows "[Pasted text +N]")
+                    # which can break injection of long session prompts
+                    inject_fn(prompt.replace("\n", " "))
         except Exception:
             pass
 
@@ -517,7 +561,12 @@ def main():
     import urllib.error
     import urllib.request
 
-    from config_loader import load_config
+    from config_loader import apply_cli_overrides, load_config
+
+    # Apply AGENTCHATTR_* overrides (from CLI flags or env) BEFORE loading
+    # config so the wrapper connects to the same data_dir/ports as a server
+    # launched with matching flags.
+    apply_cli_overrides()
     config = load_config(ROOT)
 
     agent_names = list(config.get("agents", {}).keys())
@@ -526,6 +575,14 @@ def main():
     parser.add_argument("agent", choices=agent_names, help=f"Agent to wrap ({', '.join(agent_names)})")
     parser.add_argument("--no-restart", action="store_true", help="Do not restart on exit")
     parser.add_argument("--label", type=str, default=None, help="Custom display label")
+    # Per-project isolation flags (must match the server's flags so wrappers
+    # launched separately connect to the right instance). Values are consumed
+    # by apply_cli_overrides() above; listing here so --help shows them.
+    parser.add_argument("--data-dir",      default=None, help="Override server.data_dir (path)")
+    parser.add_argument("--port",          default=None, help="Override server.port (int)")
+    parser.add_argument("--mcp-http-port", default=None, help="Override mcp.http_port (int)")
+    parser.add_argument("--mcp-sse-port",  default=None, help="Override mcp.sse_port (int)")
+    parser.add_argument("--upload-dir",    default=None, help="Override images.upload_dir (path)")
     args, extra = parser.parse_known_args()
 
     agent = args.agent
@@ -767,13 +824,6 @@ def main():
         last_active = None
         last_report_time = 0
         REPORT_INTERVAL = 3  # re-send state every 3s while active (keeps server lease fresh)
-        # Debug log for activity reporting
-        import os as _act_os
-        _act_log_path = _act_os.path.join(
-            _act_os.path.dirname(_act_os.path.abspath(__file__)),
-            f"activity_report_{assigned_name}.log",
-        )
-        _act_log = open(_act_log_path, "w")
         while True:
             time.sleep(1)
             if not _activity_checker:
@@ -804,18 +854,8 @@ def main():
                     resp_code = resp.getcode()
                     last_active = active
                     last_report_time = now
-                    import time as _t2
-                    _act_log.write(
-                        f"[{_t2.strftime('%H:%M:%S')}] SENT active={active} "
-                        f"to={current_name} status={resp_code}\n"
-                    )
-                    _act_log.flush()
-            except Exception as exc:
-                import time as _t2
-                _act_log.write(
-                    f"[{_t2.strftime('%H:%M:%S')}] ERROR: {exc}\n"
-                )
-                _act_log.flush()
+            except Exception:
+                pass
 
     threading.Thread(target=_activity_monitor, daemon=True).start()
 
@@ -845,6 +885,9 @@ def main():
         inject_env=inject_env,
         inject_delay=agent_cfg.get("inject_delay", 0.3),
     )
+    # Windows-only injection tuning (no-op on other platforms).
+    if sys.platform == "win32":
+        run_kwargs["enter_backend"] = agent_cfg.get("enter_backend", "console_input")
     if sys.platform != "win32":
         run_kwargs["session_name"] = unix_session_name
 

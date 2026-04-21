@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>agentchattr</title>
-    <link rel="stylesheet" href="/static/style.css?v=235">
+    <link rel="stylesheet" href="/static/style.css?v=249">
     <link rel="stylesheet" href="/static/sessions.css?v=223">
     <link rel="stylesheet" href="/static/jobs.css?v=223">
     <link rel="icon" href="/static/favicon.ico">
@@ -47,6 +47,12 @@
                     <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
                         <path d="M6.5 1L7.1 3.1C7.4 3.2 7.7 3.4 8 3.6L10 2.8L11.5 5.4L9.8 6.7C9.8 7 9.8 7.3 9.8 7.6L11.5 8.9L10 11.5L8 10.7C7.7 10.9 7.4 11 7.1 11.2L6.5 13.3H3.5L2.9 11.2C2.6 11 2.3 10.9 2 10.7L0 11.5L-1.5 8.9L0.2 7.6C0.2 7.3 0.2 7 0.2 6.7L-1.5 5.4L0 2.8L2 3.6C2.3 3.4 2.6 3.2 2.9 3.1L3.5 1H6.5Z" transform="translate(3 1)" stroke="currentColor" stroke-width="1.2" fill="none"/>
                         <circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.2" fill="none"/>
+                    </svg>
+                </button>
+                <button class="settings-btn" id="help-btn" onclick="toggleHelp()" title="Help">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                        <circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="1.2"/>
+                        <text x="8" y="11" text-anchor="middle" fill="currentColor" font-size="9" font-weight="700">?</text>
                     </svg>
                 </button>
             </div>
@@ -93,6 +99,13 @@
                 </select>
             </div>
             <div class="settings-field">
+                <label for="setting-channel-sidebar">Channels</label>
+                <select id="setting-channel-sidebar" title="Show channels in a sidebar (Discord/Slack-style) instead of a top bar">
+                    <option value="top">Top bar</option>
+                    <option value="sidebar">Sidebar</option>
+                </select>
+            </div>
+            <div class="settings-field">
                 <label for="setting-rules-refresh">Rule refresh</label>
                 <select id="setting-rules-refresh" title="How often to re-send active rules to agents">
                     <option value="0">On rule changes</option>
@@ -106,6 +119,15 @@
             <div class="settings-field">
                 <div id="sound-settings"></div>
             </div>
+            <div class="settings-divider"></div>
+            <div class="settings-field">
+                <label>Project History</label>
+                <div class="settings-history-btns">
+                    <button class="settings-btn" onclick="exportHistory()">Export History</button>
+                    <button class="settings-btn" id="import-history-btn" onclick="document.getElementById('import-file').click()">Import History</button>
+                    <input type="file" id="import-file" accept=".zip" style="display:none" onchange="importHistory(this)">
+                </div>
+            </div>
         </div>
 
         <div id="pins-panel" class="hidden">
@@ -116,6 +138,7 @@
         </div>
 
         <div id="channel-bar">
+            <div class="channel-bar-left-spacer" aria-hidden="true"></div>
             <div class="channel-main">
                 <div id="channel-tabs"></div>
                 <button id="channel-add-btn" class="channel-add" onclick="showChannelCreateDialog()" title="Add channel">+</button>
@@ -139,6 +162,15 @@
         </div>
 
         <div id="content-area">
+            <aside id="channel-sidebar" class="hidden">
+                <div id="channel-sidebar-top"></div>
+                <div class="channel-sidebar-header">
+                    <span>Channels</span>
+                    <button id="channel-sidebar-add" class="channel-sidebar-header-add" onclick="showChannelCreateDialog()" title="Add channel">+</button>
+                </div>
+                <div id="channel-sidebar-list"></div>
+                <div class="channel-sidebar-grip" id="channel-sidebar-grip"></div>
+            </aside>
             <main id="timeline">
                 <div id="loading-indicator">
                     <div class="loading-spinner"></div>
@@ -214,7 +246,10 @@
                 </div>
                 <div class="schedules-bar-list hidden" id="schedules-list"></div>
             </div>
-            <div id="mention-toggles"></div>
+            <div id="mention-toggles-row">
+                <div id="mention-toggles"></div>
+                <button id="clear-chat-btn" class="ghost-btn" onclick="clearChat()" title="Clear chat in this channel">Clear Chat</button>
+            </div>
             <div id="slash-menu" class="hidden"></div>
             <div id="mention-menu" class="hidden"></div>
             <div id="attachments"></div>
@@ -309,6 +344,6 @@
     <script src="/static/jobs.js?v=224"></script>
     <script src="/static/channels.js?v=224"></script>
     <script src="/static/rules-panel.js?v=223"></script>
-    <script src="/static/chat.js?v=241"></script>
+    <script src="/static/chat.js?v=266"></script>
 </body>
 </html>

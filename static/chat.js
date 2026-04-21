@@ -24,6 +24,7 @@ let channelList = ['general'];
 let channelUnread = {};  // { channelName: count }
 let agentHats = {};  // { agent_name: svg_string }
 window.customRoles = [];  // saved custom roles from settings
+let colorOverrides = JSON.parse(localStorage.getItem('agentchattr-color-overrides') || '{}');
 let schedulesList = [];  // array of schedule objects from server
 
 // Expose globals that extracted modules (sessions.js, jobs.js) read via window.*
@@ -163,6 +164,8 @@ const BRAND_AVATARS = {
     kimi: `<svg viewBox="0 0 16 16" fill="white"><path d="M6 .278a.77.77 0 0 1 .08.858 7.2 7.2 0 0 0-.878 3.46c0 4.021 3.278 7.277 7.318 7.277q.792-.001 1.533-.16a.79.79 0 0 1 .81.316.73.73 0 0 1-.031.893A8.35 8.35 0 0 1 8.344 16C3.734 16 0 12.286 0 7.71 0 4.266 2.114 1.312 5.124.06A.75.75 0 0 1 6 .278"/></svg>`,
     qwen: `<svg viewBox="0 0 331 328" fill="white"><path d="M120 8l23 39-23 39h180l-23 39H102L77 82l43-74z"/><path d="M30 86h45l88 152-25 43H53l22-39h45L30 86z"/><path d="M143 280l22 39 90-156 22 39h45l-43-74-49 0-87 152z"/></svg>`,
     kilo: `<svg viewBox="48 48 129 132" fill="black"><path d="M66.44 63.01Q64.87 65.23 65.5 68.28A2.33 2.33 0 0 0 67.78 70.13L86.53 70.13A2.43 2.41 67.4 0 1 88.24 70.84L102.02 84.62A3.21 3.21 0 0 1 102.96 86.89L102.96 102.05A.81.81 0 0 1 102.15 102.86L89.67 102.86A.78.77 0 0 1 88.89 102.09L88.89 86.2A2.04 2.04 0 0 0 86.86 84.16Q74.44 84.1 69.34 83.99Q68.24 83.97 67.5 84.16Q65.99 84.54 66.64 85.33L66.35 87.63L65.35 102.17A.65.64 2.3 0 1 64.69 102.77L50.01 102.57L49.99 50.57A.6.59-90 0 1 50.58 49.97L66.18 49.97A.31.31 0 0 1 66.49 50.29L66.44 63.01Z"/><rect x="88.81" y="51" width="14.18" height="16.62" rx="1.08"/><path d="M122.05 63.79L122.05 51.91A1.15 1.14 90 0 1 123.19 50.76L142.37 50.76A4.57 4.56 67.6 0 1 145.61 52.11L153.94 60.44A3.97 3.94 23 0 1 155.1 63.28Q154.92 74.65 155.02 86.25C155.04 88.43 156.32 88.89 158.37 88.92Q166.52 89.04 173.16 88.88A.91.91 0 0 1 174.09 89.79L174.09 102.07A.79.79 0 0 1 173.3 102.86L123.01 102.86A.89.88-90 0 1 122.13 101.97L122.13 89.71A.8.79-89 0 1 122.95 88.91Q130.98 89.21 138 88.78Q140.89 88.61 140.89 85.47Q140.89 75.62 140.52 67.56A2.12 2.11-1.3 0 0 138.4 65.54L123.8 65.54A1.75 1.75 0 0 1 122.05 63.79Z"/><rect x="-6.95" y="-6.95" transform="translate(95.98,129.08) rotate(-0.3)" width="13.9" height="13.9" rx=".88"/><path d="M66.82 158.21Q67.07 158.47 68.12 158.47Q103 158.42 103.5 158.44A.63.62-.5 0 1 104.14 159.06L104.19 174.48A.5.5 0 0 1 103.69 174.98Q94.92 174.96 64.49 175.1C60.2 175.12 58.29 172.24 55.55 169.5C52.81 166.76 49.92 164.85 49.94 160.56Q50.03 130.13 50 121.36A.5.5 0 0 1 50.5 120.86L65.92 120.89A.63.62-89.6 0 1 66.54 121.53Q66.56 122.03 66.56 156.91Q66.56 157.96 66.82 158.21Z"/><path d="M151.27 140.92Q151.82 140.86 151.98 140.39A.33.33 0 0 0 151.67 139.95L139.26 139.95A.32.31 0 0 1 138.94 139.64L138.94 126.18A.55.55 0 0 1 139.5 125.63Q145.94 125.66 153.44 125.56Q156.57 125.51 159.56 124.49L163.35 124.52A1.49 1.48-22.2 0 1 164.36 124.94L173.85 134.44A4.03 4.02-67.7 0 1 175.04 137.3L175.04 161.14A.63.63 0 0 1 174.41 161.77L158.82 161.77A.4.39-90 0 1 158.43 161.37L158.43 141.62A.55.55 0 0 0 157.89 141.07L151.27 140.92Z"/><path d="M136.83 162.31Q137.51 162.99 138.52 163.02Q147.16 163.23 155.66 162.98A1.29 1.29 0 0 1 156.98 164.27L156.98 176.37A.7.69-.4 0 1 156.29 177.06L133.55 177.06A2.39 2.38-21.8 0 1 131.83 176.32Q131.43 175.93 127.32 171.82Q123.2 167.7 122.81 167.3A2.39 2.38-68.1 0 1 122.08 165.58L122.11 142.84A.7.69-89.5 0 1 122.8 142.15L134.9 142.16A1.29 1.29 0 0 1 136.18 143.48Q135.92 151.98 136.13 160.62Q136.15 161.63 136.83 162.31Z"/></svg>`,
+    codebuddy: `<svg viewBox="0 0 52 52" fill="white"><path d="M30.5918 3.12856C30.984 2.77679 31.0078 2.7632 31.2955 2.74593C31.7615 2.71193 32.1882 2.93586 32.9147 3.59728C34.6119 5.13959 36.9755 8.30995 38.4449 11.0177L39.0125 12.0691L39.8143 12.4677C40.5885 12.8589 41.8587 13.6611 42.389 14.0913C42.6286 14.2894 42.6626 14.2934 42.912 14.1964C44.0375 13.7583 45.6494 14.3393 47.0714 15.7033C48.3516 16.9303 49.5781 19.0269 50.0478 20.7767C50.1164 21.0582 50.2074 21.6636 50.2405 22.1144C50.3477 23.6973 49.84 24.9617 48.8624 25.5341C48.6628 25.6493 48.6492 25.6807 48.6548 26.1783C48.6998 28.5492 48.0606 30.9165 46.7768 33.2244C45.3276 35.8156 42.7467 38.496 39.2544 41.0214C37.3789 42.3862 32.9421 44.9717 30.9361 45.8792C26.1304 48.0428 22.278 48.8718 18.9316 48.4618C16.9356 48.22 14.6761 47.4417 13.3392 46.5373C12.9873 46.294 12.9318 46.2791 12.6629 46.3561C11.2318 46.7671 9.35752 45.9219 7.76528 44.1544C7.13027 43.448 6.10508 41.7136 5.77273 40.7853C5.00409 38.6128 5.15721 36.6516 6.18105 35.4808C6.44522 35.1797 6.4538 35.1667 6.39603 34.6598C6.30065 33.8298 6.25703 32.6017 6.30061 31.809L6.33535 31.0683L5.22371 29.1019C3.50212 26.0386 2.40857 23.4663 1.98661 21.501C1.76389 20.4233 1.77734 19.9446 2.05091 19.5908C2.21741 19.3773 2.76347 19.1568 3.42155 19.0352C5.07869 18.7442 8.69327 19.0065 12.7142 19.7165L13.1316 19.789L14.0497 18.977C15.5733 17.6274 16.5858 16.8705 18.4518 15.707C20.3967 14.4901 22.5922 13.4895 25.064 12.6968L25.8564 12.4423L26.2926 11.2974C27.8535 7.17701 29.452 4.13917 30.5918 3.12856ZM17.5169 24.2439C15.7528 25.2625 14.8705 25.7716 14.2223 26.3423C11.5975 28.6536 10.6172 32.3151 11.7346 35.6292C12.0106 36.4475 12.5193 37.3301 13.5378 39.0941C14.5563 40.8582 15.0662 41.7401 15.637 42.3882C17.9483 45.0128 21.6091 45.9938 24.923 44.8764C25.7414 44.6004 26.6233 44.0909 28.3875 43.0724L38.5362 37.213C40.3004 36.1945 41.1826 35.6854 41.8308 35.1147C44.4555 32.8034 45.4363 29.1426 44.319 25.8286C44.043 25.0103 43.5343 24.1277 42.5158 22.3637C41.4974 20.5997 40.9873 19.7177 40.4166 19.0696C38.1053 16.4448 34.4441 15.4631 31.1301 16.5806C30.3118 16.8565 29.4297 17.3661 27.6656 18.3846L17.5169 24.2439Z"/></svg>`,
+    copilot: `<svg viewBox="0 0 16 16" fill="white"><path d="M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z"/></svg>`,
 };
 const USER_AVATAR = `<svg viewBox="0 0 32 32" fill="none"><circle cx="16" cy="12" r="5" fill="white" opacity="0.85"/><path d="M7 27C7 21.5 11 18 16 18C21 18 25 21.5 25 27" fill="white" opacity="0.85"/></svg>`;
 
@@ -262,8 +265,19 @@ function renderMarkdown(text) {
     });
     // Unescape literal \n and \t that agents sometimes send as escaped text
     text = text.replace(/\\\\n/g, '\n').replace(/\\n/g, '\n').replace(/\\t/g, '\t');
-    // Treat raw HTML as plain text so message bodies cannot break chat layout.
+    // Escape < and > outside of code blocks/inline code so raw HTML
+    // can't break layout or cause XSS, while preserving angle brackets
+    // inside backtick-delimited code where users expect them to render.
+    // Protect fenced code blocks and inline code by replacing them with placeholders
+    var codeSlots = [];
+    text = text.replace(/(```[\s\S]*?```|`[^`\n]+`)/g, function(match) {
+        codeSlots.push(match);
+        return '\x00C' + (codeSlots.length - 1) + '\x00';
+    });
+    // Escape angle brackets in non-code text only
     text = text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    // Restore code blocks (angle brackets inside them stay unescaped)
+    text = text.replace(/\x00C(\d+)\x00/g, function(_, i) { return codeSlots[parseInt(i)]; });
     // Restore paths
     text = text.replace(/\x00P(\d+)\x00/g, (_, i) => pathSlots[parseInt(i)]);
     // Parse markdown, then color @mentions, URLs, and file paths in the output
@@ -369,7 +383,21 @@ function connectWebSocket() {
         const event = JSON.parse(e.data);
         // Emit through Hub for modules to subscribe (PR 1 seam)
         Hub.emit(event.type, event);
-        if (event.type === 'message') {
+        if (event.type === 'message_update') {
+            // Re-render an updated message in-place (e.g. decision card resolved)
+            const updated = event.message;
+            if (updated && updated.id) {
+                const existing = document.querySelector(`.message[data-id="${updated.id}"]`);
+                if (existing && updated.type === 'decision') {
+                    // Update just the choices area within the bubble
+                    const choicesEl = existing.querySelector('.decision-choices');
+                    const meta = updated.metadata || {};
+                    if (choicesEl && meta.resolved) {
+                        choicesEl.innerHTML = `<div class="decision-resolved">You chose: <strong>${escapeHtml(meta.chosen || '')}</strong></div>`;
+                    }
+                }
+            }
+        } else if (event.type === 'message') {
             // Play notification sound for new messages from others (not joins, not when focused)
             if (soundEnabled && !document.hasFocus() && event.data.type !== 'join' && event.data.type !== 'leave' && event.data.type !== 'summary' && event.data.sender && event.data.sender.toLowerCase() !== username.toLowerCase()) {
                 playNotificationSound(event.data.sender);
@@ -560,6 +588,9 @@ function connectWebSocket() {
                 const _clearDbgAfter = _clearDbgList ? _clearDbgList.children.length : -1;
                 console.log('CLEAR_DEBUG after clear (next frame), jobs-panel-children=' + _clearDbgAfter);
             });
+        } else if (event.type === 'reload') {
+            // Server requests full page reload (e.g. after import)
+            location.reload();
         }
     };
 
@@ -716,7 +747,7 @@ function appendMessage(msg) {
 
         // Update last mentioned agent if message is from user (Ben)
         if (msg.sender.toLowerCase() === username.toLowerCase()) {
-            const mentions = msg.text.match(/@(\w+)/g);
+            const mentions = msg.text.match(/@(\w[\w-]*)/g);
             if (mentions) {
                 const lastMention = mentions[mentions.length - 1].slice(1).toLowerCase();
                 // Check against registered agents (agentConfig keys are name labels)
@@ -766,7 +797,20 @@ function appendMessage(msg) {
         const senderRole = _agentRoles[msg.sender] || '';
         const roleClass = senderRole ? 'bubble-role has-role' : 'bubble-role';
         const rolePillHtml = !isSelf ? `<button class="${roleClass}" onclick="showBubbleRolePicker(this, '${escapeHtml(msg.sender)}')" title="${senderRole ? escapeHtml(senderRole) : 'Set role'}">${senderRole || 'choose a role'}</button>` : '';
-        el.innerHTML = `<div class="todo-strip"></div>${isSelf ? '' : avatarHtml}<div class="chat-bubble" style="--bubble-color: ${senderColor}">${replyHtml}<div class="bubble-header"><span class="msg-sender" style="color: ${senderColor}">${escapeHtml(msg.sender)}</span>${rolePillHtml}<span class="msg-time">${msg.time || ''}</span></div><div class="msg-text">${textHtml}</div>${attachmentsHtml}<button class="convert-job-pill" onclick="startJobFromMessage(${msg.id}); event.stopPropagation();" title="Convert to job">convert to job</button><button class="bubble-copy" onclick="copyMessage(${msg.id}, event)" title="Copy message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div><div class="msg-actions"><button class="reply-btn" onclick="startReply(${msg.id}, event)">reply</button><button class="todo-hint" onclick="todoCycle(${msg.id}); event.stopPropagation();">${statusLabel}</button><button class="delete-btn" onclick="deleteClick(${msg.id}, event)" title="Delete">del</button></div>`;
+        // Inline decision choices (if present)
+        let choicesHtml = '';
+        const meta = msg.metadata || {};
+        const choicesList = meta.choices || [];
+        if (msg.type === 'decision' && choicesList.length > 0) {
+            if (meta.resolved) {
+                choicesHtml = `<div class="decision-choices"><div class="decision-resolved">You chose: <strong>${escapeHtml(meta.chosen || '')}</strong></div></div>`;
+            } else {
+                choicesHtml = '<div class="decision-choices">' + choicesList.map(c =>
+                    `<button class="decision-choice" onclick="resolveDecision(${msg.id}, '${escapeHtml(c).replace(/'/g, "\\'")}')">${escapeHtml(c)}</button>`
+                ).join('') + '</div>';
+            }
+        }
+        el.innerHTML = `<div class="todo-strip"></div>${isSelf ? '' : avatarHtml}<div class="chat-bubble" style="--bubble-color: ${senderColor}">${replyHtml}<div class="bubble-header"><span class="msg-sender" style="color: ${senderColor}">${escapeHtml(msg.sender)}</span>${rolePillHtml}<span class="msg-time">${msg.time || ''}</span></div><div class="msg-text">${textHtml}</div>${choicesHtml}${attachmentsHtml}<button class="convert-job-pill" onclick="startJobFromMessage(${msg.id}); event.stopPropagation();" title="Convert to job">convert to job</button><button class="bubble-copy" onclick="copyMessage(${msg.id}, event)" title="Copy message"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg></button></div><div class="msg-actions"><button class="reply-btn" onclick="startReply(${msg.id}, event)">reply</button><button class="todo-hint" onclick="todoCycle(${msg.id}); event.stopPropagation();">${statusLabel}</button><button class="delete-btn" onclick="deleteClick(${msg.id}, event)" title="Delete">del</button></div>`;
         if (todoStatus) el.classList.add('msg-todo', `msg-todo-${todoStatus}`);
         if (msg.metadata?.session_output) el.classList.add('session-output');
 
@@ -829,9 +873,15 @@ function getColor(sender) {
     const s = sender.toLowerCase();
     if (s === 'system') return 'var(--system-color)';
     const resolved = resolveAgent(s);
-    if (resolved) return agentConfig[resolved].color;
+    if (resolved) {
+        if (colorOverrides[resolved]) return colorOverrides[resolved];
+        return agentConfig[resolved].color;
+    }
+    // Check overrides for unresolved names too
+    if (colorOverrides[s]) return colorOverrides[s];
     // Fall back to base agent colors (for historical messages from offline agents)
     const base = s.replace(/-\d+$/, '');
+    if (colorOverrides[base]) return colorOverrides[base];
     if (base in baseColors) return baseColors[base].color;
     return 'var(--user-color)';
 }
@@ -845,7 +895,7 @@ function colorMentions(textHtml) {
         }
         const resolved = resolveAgent(lower);
         if (resolved) {
-            const color = agentConfig[resolved].color;
+            const color = getColor(resolved);
             return `<span class="mention" style="color: ${color}">@${name}</span>`;
         }
         // Non-agent mention (e.g. @ben, @user) — use user color
@@ -1089,11 +1139,14 @@ function buildStatusPills() {
         if (cfg.state === 'pending') pill.classList.add('pending');
         pill.id = `status-${name}`;
         pill.title = `@${name}`;  // Tooltip: canonical name for manual @-typing
-        pill.style.setProperty('--agent-color', cfg.color || '#4ade80');
+        pill.style.setProperty('--agent-color', colorOverrides[name] || cfg.color || '#4ade80');
         pill.innerHTML = `<span class="status-dot"></span><span class="status-label">${escapeHtml(cfg.label || name)}</span>`;
-        // Left-click to open pill popover (rename + role)
+        // Left-click to toggle pill popover (rename + role + color)
         pill.addEventListener('click', (e) => {
             e.stopPropagation();
+            // Toggle: close if this pill's popover is already open
+            const existing = document.querySelector(`.pill-popover[data-agent="${name}"]`);
+            if (existing) { existing.remove(); return; }
             const mode = cfg.state === 'pending' ? 'pending' : 'rename';
             showPillPopover(pill, {
                 name, label: cfg.label || name, color: cfg.color || '#888',
@@ -1241,7 +1294,8 @@ function showPillPopover(pillEl, opts) {
 
     const popover = document.createElement('div');
     popover.className = 'pill-popover';
-    popover.style.setProperty('--agent-color', opts.color);
+    popover.dataset.agent = opts.name;
+    popover.style.setProperty('--agent-color', colorOverrides[opts.name] || opts.color);
 
     const currentRole = (_agentRoles[opts.name] || '').toLowerCase();
     const roleChipsHtml = ROLE_PRESETS.map(p =>
@@ -1272,6 +1326,31 @@ function showPillPopover(pillEl, opts) {
                 <input type="text" class="pill-popover-custom-input" placeholder="Custom role..." maxlength="20" />
             </div>
         </div>
+        ${(() => {
+            // Resolve the actual current color: override → pill CSS var → config → fallback
+            let current = colorOverrides[opts.name] || '';
+            if (!current && pillEl) {
+                const computed = getComputedStyle(pillEl).getPropertyValue('--agent-color').trim();
+                if (computed && !computed.startsWith('var(')) current = computed;
+            }
+            if (!current) current = opts.color || '';
+            current = current.toLowerCase();
+            const swatches = ['#ef4444','#da7756','#f97316','#f59e0b','#84cc16','#10a37f','#14b8a6','#06b6d4','#1783ff','#4285f4','#6366f1','#8b5cf6','#ec4899','#ff6b35'];
+            const matchesSwatch = swatches.some(c => current === c.toLowerCase());
+            const colorInputVal = (current && !current.startsWith('var(')) ? current : (opts.color || '#888888');
+            return `<div class="pill-popover-section">
+                <label class="pill-popover-label">Color</label>
+                <div class="pill-popover-colors">
+                    ${swatches.map(c =>
+                        `<button class="color-swatch ${current === c.toLowerCase() ? 'active' : ''}" data-color="${c}" style="background:${c}" title="${c}"></button>`
+                    ).join('')}
+                </div>
+                <div class="pill-popover-color-custom">
+                    <input type="color" class="pill-popover-color-input ${!matchesSwatch ? 'active' : ''}" value="${colorInputVal}" title="Pick custom color" />
+                    <button class="pill-popover-color-reset" title="Reset to default">Reset</button>
+                </div>
+            </div>`;
+        })()}
     `;
 
     const inputEl = popover.querySelector('.pill-popover-input');
@@ -1350,12 +1429,80 @@ function showPillPopover(pillEl, opts) {
         if (e.key === 'Escape') { closePopover(); e.preventDefault(); }
     });
 
+    // --- Color picker handlers ---
+    const applyColorOverride = (color) => {
+        colorOverrides[opts.name] = color;
+        localStorage.setItem('agentchattr-color-overrides', JSON.stringify(colorOverrides));
+        // Update pill color
+        const pillToUpdate = document.getElementById(`status-${opts.name}`);
+        if (pillToUpdate) pillToUpdate.style.setProperty('--agent-color', color);
+        popover.style.setProperty('--agent-color', color);
+        // Recolor all messages
+        recolorMessages();
+        // Rebuild mention toggles with new colors
+        buildMentionToggles();
+        // Update active swatch + color input highlight
+        const swatchColors = [];
+        popover.querySelectorAll('.color-swatch').forEach(s => {
+            const match = s.dataset.color.toLowerCase() === color.toLowerCase();
+            s.classList.toggle('active', match);
+            swatchColors.push(s.dataset.color.toLowerCase());
+        });
+        const colorInput = popover.querySelector('.pill-popover-color-input');
+        if (colorInput) {
+            colorInput.value = color;
+            // Highlight color input if color doesn't match any swatch
+            colorInput.classList.toggle('active', !swatchColors.includes(color.toLowerCase()));
+        }
+    };
+
+    popover.querySelectorAll('.color-swatch').forEach(swatch => {
+        swatch.addEventListener('click', (e) => {
+            e.stopPropagation();
+            applyColorOverride(swatch.dataset.color);
+        });
+    });
+
+    const colorInput = popover.querySelector('.pill-popover-color-input');
+    if (colorInput) {
+        colorInput.addEventListener('input', (e) => {
+            applyColorOverride(e.target.value);
+        });
+    }
+
+    const resetBtn = popover.querySelector('.pill-popover-color-reset');
+    if (resetBtn) {
+        resetBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            delete colorOverrides[opts.name];
+            localStorage.setItem('agentchattr-color-overrides', JSON.stringify(colorOverrides));
+            const defaultColor = opts.color || '#888';
+            const pillToUpdate = document.getElementById(`status-${opts.name}`);
+            if (pillToUpdate) pillToUpdate.style.setProperty('--agent-color', defaultColor);
+            popover.style.setProperty('--agent-color', defaultColor);
+            recolorMessages();
+            buildMentionToggles();
+            popover.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+            if (colorInput) colorInput.value = defaultColor;
+        });
+    }
+
     document.body.appendChild(popover);
 
     if (pillEl) {
         const rect = pillEl.getBoundingClientRect();
+        const popoverWidth = 280;
+        let left;
+        // If pill is in the right half of the screen, align popover's right edge to pill's right edge
+        if (rect.right + popoverWidth - rect.width > window.innerWidth - 12) {
+            left = rect.right - popoverWidth;
+        } else {
+            left = rect.left;
+        }
+        // Final clamp to keep on screen
+        left = Math.max(12, Math.min(left, window.innerWidth - popoverWidth - 12));
         popover.style.top = `${rect.bottom + 8}px`;
-        popover.style.left = `${Math.min(rect.left, window.innerWidth - 280)}px`;
+        popover.style.left = `${left}px`;
     } else {
         popover.style.top = '50%';
         popover.style.left = '50%';
@@ -1641,12 +1788,71 @@ function toggleSettings() {
     }
 }
 
-function clearChat() {
-    if (!confirm(`Clear all messages in #${activeChannel}? This cannot be undone.`)) return;
-    if (ws && ws.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'message', text: '/clear', sender: username, channel: activeChannel }));
+function _clearClearChatConfirm() {
+    const btn = document.getElementById('clear-chat-btn');
+    const confirmEl = document.getElementById('clear-chat-confirm');
+    if (confirmEl) confirmEl.remove();
+    if (btn) {
+        btn.textContent = 'Clear Chat';
+        btn.classList.remove('confirming');
     }
-    document.getElementById('settings-bar').classList.add('hidden');
+    document.removeEventListener('click', _clearChatOutsideClick, true);
+}
+
+function _clearChatOutsideClick(e) {
+    const btn = document.getElementById('clear-chat-btn');
+    const confirmEl = document.getElementById('clear-chat-confirm');
+    if (!btn || !confirmEl) return;
+    if (!btn.contains(e.target) && !confirmEl.contains(e.target)) {
+        _clearClearChatConfirm();
+    }
+}
+
+function clearChat() {
+    const btn = document.getElementById('clear-chat-btn');
+    if (!btn) return;
+
+    // Second click -> execute. First click -> inline confirm, matching the
+    // End Session pattern elsewhere.
+    if (btn.classList.contains('confirming')) {
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'message', text: '/clear', sender: username, channel: activeChannel }));
+        }
+        _clearClearChatConfirm();
+        document.getElementById('settings-bar').classList.add('hidden');
+        return;
+    }
+
+    btn.textContent = 'Clear Chat?';
+    btn.classList.add('confirming');
+
+    const confirmWrap = document.createElement('span');
+    confirmWrap.id = 'clear-chat-confirm';
+    confirmWrap.className = 'session-inline-confirm';
+    confirmWrap.innerHTML = `
+        <button class="session-inline-confirm-yes ch-confirm-yes" title="Confirm clear chat">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M3 8.5l3.5 3.5 6.5-7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="session-inline-confirm-no ch-confirm-no" title="Cancel">
+            <svg width="12" height="12" viewBox="0 0 16 16" fill="none"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+    `;
+    btn.parentElement.insertBefore(confirmWrap, btn);
+
+    confirmWrap.querySelector('.ch-confirm-yes').onclick = (e) => {
+        e.stopPropagation();
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(JSON.stringify({ type: 'message', text: '/clear', sender: username, channel: activeChannel }));
+        }
+        _clearClearChatConfirm();
+        document.getElementById('settings-bar').classList.add('hidden');
+    };
+    confirmWrap.querySelector('.ch-confirm-no').onclick = (e) => {
+        e.stopPropagation();
+        _clearClearChatConfirm();
+    };
+
+    setTimeout(() => document.addEventListener('click', _clearChatOutsideClick, true), 0);
 }
 
 function saveSettings() {
@@ -1704,6 +1910,92 @@ function setupSettingsKeys() {
                 toggleSettings();
             }
         });
+    }
+}
+
+// --- Toast notifications ---
+
+function showToast(message, type = 'info') {
+    const toast = document.createElement('div');
+    toast.className = `toast toast--${type}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    requestAnimationFrame(() => toast.classList.add('toast--visible'));
+    setTimeout(() => {
+        toast.classList.remove('toast--visible');
+        setTimeout(() => toast.remove(), 300);
+    }, 4000);
+}
+
+// --- Export / Import ---
+
+async function exportHistory() {
+    try {
+        const resp = await fetch('/api/export', {
+            headers: { 'X-Session-Token': SESSION_TOKEN },
+        });
+        if (!resp.ok) {
+            const err = await resp.json().catch(() => ({}));
+            showToast(err.error || 'Export failed', 'error');
+            return;
+        }
+        const blob = await resp.blob();
+        const disposition = resp.headers.get('Content-Disposition') || '';
+        const match = disposition.match(/filename="(.+?)"/);
+        const filename = match ? match[1] : 'agentchattr-export.zip';
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = filename;
+        a.click();
+        URL.revokeObjectURL(a.href);
+        const counts = [];
+        // Parse counts from manifest if possible, or just show success
+        showToast('History exported', 'success');
+    } catch (e) {
+        showToast('Export failed: ' + e.message, 'error');
+    }
+}
+
+async function importHistory(input) {
+    const file = input.files[0];
+    if (!file) return;
+    input.value = ''; // Reset so same file can be picked again
+    const btn = document.getElementById('import-history-btn');
+    const origText = btn.textContent;
+    btn.textContent = 'Importing...';
+    btn.disabled = true;
+    try {
+        const formData = new FormData();
+        formData.append('file', file);
+        const resp = await fetch('/api/import', {
+            method: 'POST',
+            headers: { 'X-Session-Token': SESSION_TOKEN },
+            body: formData,
+        });
+        const data = await resp.json();
+        if (!resp.ok || !data.ok) {
+            showToast(data.error || 'Import failed', 'error');
+            return;
+        }
+        // Build result message
+        const parts = [];
+        const s = data.sections || {};
+        if (s.messages) parts.push(`${s.messages.created} messages`);
+        if (s.jobs) parts.push(`${s.jobs.created} jobs`);
+        if (s.rules) parts.push(`${s.rules.created} rules`);
+        if (s.summaries) parts.push(`${s.summaries.created + (s.summaries.updated || 0)} summaries`);
+        const dupes = (s.messages?.duplicates || 0) + (s.jobs?.duplicates || 0) + (s.rules?.duplicates || 0);
+        let msg = 'Imported ' + parts.join(', ');
+        if (dupes > 0) msg += ` (${dupes} duplicates skipped)`;
+        if (data.warnings && data.warnings.length > 0) {
+            msg += `. ${data.warnings.length} warning(s)`;
+        }
+        showToast(msg, 'success');
+    } catch (e) {
+        showToast('Import failed: ' + e.message, 'error');
+    } finally {
+        btn.textContent = origText;
+        btn.disabled = false;
     }
 }
 
@@ -1979,13 +2271,25 @@ function setupInput() {
     });
 
     // Auto-resize + slash menu + mention menu + send button state
-    input.addEventListener('input', () => {
+    function onInputChange() {
         input.style.height = 'auto';
         input.style.height = Math.min(input.scrollHeight, 120) + 'px';
         updateSlashMenu(input.value);
         updateMentionMenu();
         updateSendButton();
-    });
+    }
+    input.addEventListener('input', onInputChange);
+    // Voice typing doesn't always fire 'input' — catch with additional events
+    input.addEventListener('compositionend', onInputChange);
+    input.addEventListener('change', onInputChange);
+    // Fallback poll for speech-to-text that bypasses all events
+    let _lastInputVal = '';
+    setInterval(() => {
+        if (input.value !== _lastInputVal) {
+            _lastInputVal = input.value;
+            updateSendButton();
+        }
+    }, 300);
     updateSendButton();
 }
 
@@ -2013,7 +2317,7 @@ function sendMessage() {
             skipMentions = true;
         }
         // Commands that need an @mention — show hint and keep command in input
-        if (matchedCmd && matchedCmd.needsMention && !/@\w/.test(text)) {
+        if (matchedCmd && matchedCmd.needsMention && !/@\w[\w-]*/.test(text)) {
             const canonical = matchedCmd.cmd.split(/\s/)[0];  // e.g. '/summary'
             input.value = canonical + ' @';
             input.focus();
@@ -2155,7 +2459,7 @@ function renderAttachments() {
         const wrap = document.createElement('div');
         wrap.className = 'attachment-preview';
         wrap.innerHTML = `
-            <img src="${att.url}" alt="${escapeHtml(att.name)}">
+            <img src="${att.url}" alt="${escapeHtml(att.name)}" onclick="openImageModal('${escapeHtml(att.url)}')" title="Click to preview">
             <button class="remove-btn" onclick="removeAttachment(${i})">x</button>
         `;
         container.appendChild(wrap);
@@ -2205,86 +2509,8 @@ function setupScroll() {
         new ResizeObserver(repositionScrollAnchor).observe(contentArea);
     }
 
-    // Collapse "Support development" to heart-only when the expanded pill would crowd tabs.
-    const supportLink = document.querySelector('.channel-support');
-    const supportLabel = document.querySelector('.support-label');
-    const channelBar = document.getElementById('channel-bar');
-    const channelBarRight = document.querySelector('.channel-bar-right');
-    const tabs = document.getElementById('channel-tabs');
-    const addBtn = document.getElementById('channel-add-btn');
-    if (supportLink && supportLabel && channelBar && channelBarRight && tabs) {
-        const COMFORT_MARGIN = 16;
-        const EXPAND_HYSTERESIS = 24;
-        let isCompact = supportLink.classList.contains('compact');
-
-        function applySupportCompact(compact) {
-            if (isCompact === compact) return false;
-            isCompact = compact;
-            supportLink.classList.toggle('compact', compact);
-            supportLabel.style.display = compact ? 'none' : '';
-            return true;
-        }
-
-        function measureRightWidth(compact) {
-            const prevCompact = supportLink.classList.contains('compact');
-            const prevDisplay = supportLabel.style.display;
-            supportLink.classList.toggle('compact', compact);
-            supportLabel.style.display = compact ? 'none' : '';
-            const width = Math.ceil(channelBarRight.getBoundingClientRect().width);
-            supportLink.classList.toggle('compact', prevCompact);
-            supportLabel.style.display = prevDisplay;
-            return width;
-        }
-
-        function getTabsContentWidth() {
-            const styles = getComputedStyle(tabs);
-            const gap = parseFloat(styles.columnGap || styles.gap || '0') || 0;
-            const children = Array.from(tabs.children);
-            let width = 0;
-            children.forEach((child, index) => {
-                width += child.getBoundingClientRect().width;
-                if (index < children.length - 1) width += gap;
-            });
-            return Math.ceil(width);
-        }
-
-        function checkSupportCollapse() {
-            const available = Math.ceil(channelBar.clientWidth);
-            const tabsWidth = getTabsContentWidth();
-            const addWidth = addBtn ? Math.ceil(addBtn.getBoundingClientRect().width + 8) : 0;
-            const expandedRightWidth = measureRightWidth(false);
-            const expandedNeeded = tabsWidth + addWidth + expandedRightWidth + COMFORT_MARGIN;
-
-            if (!isCompact && expandedNeeded > available) {
-                if (applySupportCompact(true)) requestAnimationFrame(checkSupportCollapse);
-                return;
-            }
-
-            if (isCompact && expandedNeeded + EXPAND_HYSTERESIS < available) {
-                if (applySupportCompact(false)) requestAnimationFrame(checkSupportCollapse);
-            }
-        }
-
-        const scheduleSupportRecheck = () => requestAnimationFrame(checkSupportCollapse);
-        window.addEventListener('resize', scheduleSupportRecheck);
-
-        const supportResizeObserver = new ResizeObserver(scheduleSupportRecheck);
-        supportResizeObserver.observe(channelBar);
-        supportResizeObserver.observe(tabs);
-        supportResizeObserver.observe(channelBarRight);
-
-        new MutationObserver(scheduleSupportRecheck).observe(tabs, {
-            childList: true,
-            subtree: true,
-            attributes: true,
-            attributeFilter: ['class', 'style'],
-        });
-
-        requestAnimationFrame(() => {
-            checkSupportCollapse();
-            setTimeout(checkSupportCollapse, 0);
-        });
-    }
+    // Support button label collapses via CSS overflow (grid column shrinks naturally).
+    // No JS measurement needed.
 }
 
 // --- Reply ---
@@ -2699,7 +2925,7 @@ function buildMentionToggles() {
         btn.dataset.agent = name;
         btn.textContent = `@${cfg.label || name}`;
         btn.title = `@${name}`;  // Tooltip: canonical name
-        btn.style.setProperty('--agent-color', cfg.color);
+        btn.style.setProperty('--agent-color', colorOverrides[name] || cfg.color);
         // Restore active state for mentions that survived the rebuild
         if (activeMentions.has(name)) {
             btn.classList.add('active');
@@ -2841,7 +3067,11 @@ function openImageModal(url) {
     modalImages = getAllChatImages();
     // Match by endsWith since onclick passes relative URL but img.src is absolute
     modalIndex = modalImages.findIndex(src => src.endsWith(url) || src === url);
-    if (modalIndex === -1) modalIndex = 0;
+    if (modalIndex === -1) {
+        // Image not in chat gallery (e.g. composer preview) — show it standalone
+        modalImages = [url];
+        modalIndex = 0;
+    }
 
     let modal = document.getElementById('image-modal');
     if (!modal) {
@@ -3281,7 +3511,7 @@ function updateSchedulePopoverState() {
     const submitBtn = pop.querySelector('.sched-pop-submit');
     const input = document.getElementById('input');
     const text = input ? input.value.trim() : '';
-    const mentionMatches = text.match(/@(\w+)/g) || [];
+    const mentionMatches = text.match(/@(\w[\w-]*)/g) || [];
     const targets = new Set(mentionMatches.map(m => m.slice(1)));
     for (const name of activeMentions) targets.add(name);
     if (targets.size === 0) {
@@ -3298,10 +3528,10 @@ async function submitSchedulePopover() {
     const text = input ? input.value.trim() : '';
 
     // Gather targets
-    const mentionMatches = text.match(/@(\w+)/g) || [];
+    const mentionMatches = text.match(/@(\w[\w-]*)/g) || [];
     const targets = new Set(mentionMatches.map(m => m.slice(1)));
     for (const name of activeMentions) targets.add(name);
-    let prompt = text.replace(/@\w+/g, '').trim();
+    let prompt = text.replace(/@\w[\w-]*/g, '').trim();
 
     const errEl = document.getElementById('sched-pop-error');
 
@@ -3380,6 +3610,556 @@ setInterval(() => {
     if (schedulesList.length > 0) renderSchedulesBar();
 }, 10000);
 
+// --- Decision card resolve (with fade animation) ---
+async function resolveDecision(msgId, choice) {
+    // Fade out buttons immediately
+    const msgEl = document.querySelector(`.message[data-id="${msgId}"]`);
+    const buttons = msgEl ? msgEl.querySelectorAll('.decision-choice') : [];
+    buttons.forEach(btn => { btn.style.opacity = '0.4'; btn.style.pointerEvents = 'none'; });
+    try {
+        const res = await fetch(`/api/messages/${msgId}/resolve_decision`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-Session-Token': SESSION_TOKEN },
+            body: JSON.stringify({ choice }),
+        });
+        if (!res.ok) {
+            const err = await res.json();
+            console.error('Failed to resolve decision:', err);
+            // Restore buttons on failure
+            buttons.forEach(btn => { btn.style.opacity = ''; btn.style.pointerEvents = ''; });
+        }
+    } catch (e) {
+        console.error('Decision resolve error:', e);
+        buttons.forEach(btn => { btn.style.opacity = ''; btn.style.pointerEvents = ''; });
+    }
+}
+window.resolveDecision = resolveDecision;
+
+// --- Help Guide (row-based layout with stacked modal fallback) ---
+var _helpOpen = false;
+var _helpResizeTimer = null;
+
+function toggleHelp() {
+    _helpOpen ? closeHelp() : openHelp();
+}
+
+// --- Card content definitions (shared between both modes) ---
+function _helpCardDefs() {
+    return [
+        {
+            id: 'hg-agents',
+            anchor: '#agent-status',
+            row: 'top',
+            html:
+            '<div class="hg-module-title">Agents <span class="hg-loc">header pills</span></div>' +
+            '<p class="hg-module-desc">The status pills in the header show who is here and what they\'re doing.</p>' +
+            '<div class="hg-mock-row">' +
+                '<div class="hg-mock-pill hg-pill-available">' +
+                    '<span class="hg-mock-dot" style="background:#f97316"></span>' +
+                    '<span style="color:#f97316">claude</span>' +
+                '</div>' +
+                '<span class="hg-mock-label">Online</span>' +
+            '</div>' +
+            '<div class="hg-mock-row">' +
+                '<div class="hg-mock-pill hg-pill-working">' +
+                    '<span class="hg-mock-dot" style="background:#4ade80"></span>' +
+                    '<span style="color:#34d399">codex</span>' +
+                '</div>' +
+                '<span class="hg-mock-label">Working &mdash; spinning border</span>' +
+            '</div>' +
+            '<div class="hg-mock-row">' +
+                '<div class="hg-mock-pill hg-pill-offline">' +
+                    '<span class="hg-mock-dot" style="background:#555"></span>' +
+                    '<span style="color:#555">gemini</span>' +
+                '</div>' +
+                '<span class="hg-mock-label">Offline</span>' +
+            '</div>' +
+            '<p class="hg-module-tip">Click any pill to rename it, assign a role, or change its colour.</p>'
+        },
+        {
+            id: 'hg-jobs',
+            anchor: '#jobs-toggle',
+            row: 'top',
+            html:
+            '<div class="hg-module-title">Jobs <span class="hg-loc">hover any message + sidebar</span></div>' +
+            '<p class="hg-module-desc">Jobs turn conversation into tracked work. Any message can become a job.</p>' +
+            '<div class="hg-mock-message">' +
+                '<div class="hg-mock-avatar" style="background:#f97316"></div>' +
+                '<div class="hg-mock-msg-body">' +
+                    '<span class="hg-mock-sender" style="color:#f97316">claude</span>' +
+                    '<span class="hg-mock-text">The auth module needs refactoring before we can add SSO support.</span>' +
+                '</div>' +
+                '<span class="hg-mock-convert-pill">convert to job</span>' +
+            '</div>' +
+            '<p class="hg-module-tip">Hover any message to see <strong>convert to job</strong>. This opens the Jobs sidebar.</p>' +
+            '<div class="hg-mock-panel">' +
+                '<div class="hg-mock-panel-header">' +
+                    '<span>Jobs sidebar</span>' +
+                    '<span class="hg-mock-panel-add">+</span>' +
+                '</div>' +
+                '<div class="hg-mock-job-card">' +
+                    '<span class="hg-mock-job-dot" style="background:#6a6a80"></span>' +
+                    '<span class="hg-mock-job-title">Auth refactor</span>' +
+                    '<div class="hg-mock-job-toggles">' +
+                        '<span class="hg-mock-toggle hg-toggle-open active">TO DO</span>' +
+                        '<span class="hg-mock-toggle hg-toggle-done">ACTIVE</span>' +
+                        '<span class="hg-mock-toggle hg-toggle-archived">CLOSED</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<p class="hg-module-tip">Jobs live in the sidebar. Each one opens its own thread, and you can track it from TO DO to ACTIVE to CLOSED.</p>'
+        },
+        {
+            id: 'hg-rules',
+            anchor: '#rules-toggle',
+            row: 'top',
+            html:
+            '<div class="hg-module-title">Rules <span class="hg-loc">top-right panel</span></div>' +
+            '<p class="hg-module-desc">Rules tell agents how to work in this room. Active rules are followed automatically.</p>' +
+            '<div class="hg-mock-panel">' +
+                '<div class="hg-mock-panel-header">' +
+                    '<span>Rules</span>' +
+                    '<span class="hg-mock-panel-counter">2</span>' +
+                    '<span class="hg-mock-panel-add">+</span>' +
+                '</div>' +
+                '<div class="hg-mock-rule-card">' +
+                    '<span class="hg-mock-rule-dot draft"></span>' +
+                    '<span class="hg-mock-rule-text">Run tests before committing</span>' +
+                    '<span class="hg-mock-rule-badge">draft</span>' +
+                '</div>' +
+                '<div class="hg-mock-rule-card">' +
+                    '<span class="hg-mock-rule-dot active"></span>' +
+                    '<span class="hg-mock-rule-text">Always explain your reasoning before making changes</span>' +
+                '</div>' +
+            '</div>' +
+            '<p class="hg-module-tip"><span class="hg-mock-rule-dot active" style="display:inline-block;vertical-align:middle;margin-top:0;margin-right:4px"></span> <strong>Active</strong> = agents follow this. ' +
+            '<span class="hg-mock-rule-dot draft" style="display:inline-block;vertical-align:middle;margin-top:0;margin-left:4px;margin-right:4px"></span> <strong>Draft</strong> = not active yet. ' +
+            'You or agents can add rules.</p>'
+        },
+        {
+            id: 'hg-channels',
+            anchor: '#channel-tabs',
+            row: 'middle',
+            light: true,
+            wide: true,
+            html:
+            '<div class="hg-module-title">Channels <span class="hg-loc">top bar</span></div>' +
+            '<p class="hg-module-desc">Split conversations by topic. Each channel has its own message history.</p>' +
+            '<div class="hg-mock-channels">' +
+                '<span class="hg-mock-ch active"># general</span>' +
+                '<span class="hg-mock-ch"># design</span>' +
+                '<span class="hg-mock-ch"># backend</span>' +
+                '<span class="hg-mock-ch-add">+</span>' +
+            '</div>' +
+            '<p class="hg-module-tip">Click <strong>+</strong> to create a new channel. Agents can be mentioned in any channel.</p>'
+        },
+        {
+            id: 'hg-mentions',
+            anchor: '.mention-toggle',
+            row: 'bottom',
+            light: true,
+            html:
+            '<div class="hg-module-title">Mentions <span class="hg-loc">pills above composer</span></div>' +
+            '<p class="hg-module-desc">Type <strong>@</strong> in the composer to mention an agent. The pills above the input let you pre-select who to address. Selected agents are mentioned automatically when you send.</p>' +
+            '<p class="hg-module-tip">Mentioned agents receive a trigger and will respond in the channel.</p>'
+        },
+        {
+            id: 'hg-sessions',
+            anchor: '#session-launch-btn',
+            row: 'bottom',
+            html:
+            '<div class="hg-module-title">Sessions <span class="hg-loc">play button</span></div>' +
+            '<p class="hg-module-desc">Sessions are structured multi-agent workflows with phases and roles. Launch one to coordinate agents on a shared goal.</p>' +
+            '<div class="hg-mock-sessions">' +
+                '<div class="hg-mock-session-card">' +
+                    '<span class="hg-mock-session-icon">&#9654;</span>' +
+                    '<div class="hg-mock-session-info">' +
+                        '<span class="hg-mock-session-name">Brainstorm</span>' +
+                        '<span class="hg-mock-session-desc">Free-form idea generation with all agents</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="hg-mock-session-card">' +
+                    '<span class="hg-mock-session-icon">&#9654;</span>' +
+                    '<div class="hg-mock-session-info">' +
+                        '<span class="hg-mock-session-name">Code Review</span>' +
+                        '<span class="hg-mock-session-desc">Structured review with phases and roles</span>' +
+                    '</div>' +
+                '</div>' +
+                '<div class="hg-mock-session-card">' +
+                    '<span class="hg-mock-session-icon">&#9654;</span>' +
+                    '<div class="hg-mock-session-info">' +
+                        '<span class="hg-mock-session-name">Design Review</span>' +
+                        '<span class="hg-mock-session-desc">Critique and iterate on design decisions</span>' +
+                    '</div>' +
+                '</div>' +
+            '</div>' +
+            '<div class="hg-custom-session">' +
+                '<strong>Custom sessions</strong> &mdash; describe a goal and agents will organise themselves into a structured workflow.' +
+            '</div>' +
+            '<p class="hg-module-tip">Click the <strong>&#9654; play button</strong> next to the composer to start.</p>'
+        },
+        {
+            id: 'hg-scheduling',
+            anchor: '#schedule-btn',
+            row: 'bottom',
+            html:
+            '<div class="hg-module-title">Scheduling <span class="hg-loc">clock button</span></div>' +
+            '<p class="hg-module-desc">Schedule any message for later delivery, or set up recurring prompts on a timer.</p>' +
+            '<div class="hg-mock-sched-entry">' +
+                '<span class="hg-sched-time">3:00 PM</span>' +
+                '<span style="flex:1;color:var(--text)">@codex check deployment status</span>' +
+                '<span class="hg-sched-recur">every 1h</span>' +
+            '</div>' +
+            '<div class="hg-mock-sched-entry">' +
+                '<span class="hg-sched-time">Tomorrow 9 AM</span>' +
+                '<span style="flex:1;color:var(--text)">@claude summarise overnight changes</span>' +
+            '</div>' +
+            '<p class="hg-module-tip">Click the <strong>&#9201; clock button</strong> next to Send to schedule a one-time or recurring message.</p>'
+        }
+    ];
+}
+
+// --- Anchored (desktop) mode ---
+function _openHelpAnchored(cardDefs) {
+    var svgNS = 'http://www.w3.org/2000/svg';
+
+    // Main overlay container (contains everything)
+    var overlay = document.createElement('div');
+    overlay.className = 'help-guide';
+    overlay.id = 'help-guide';
+
+    // Backdrop (inside overlay)
+    var backdrop = document.createElement('div');
+    backdrop.className = 'hg-backdrop';
+    backdrop.addEventListener('click', closeHelp);
+    overlay.appendChild(backdrop);
+
+    // SVG arrow layer (inside overlay)
+    var svg = document.createElementNS(svgNS, 'svg');
+    svg.setAttribute('class', 'hg-svg-layer');
+    svg.id = 'hg-svg-layer';
+    svg.setAttribute('width', '100%');
+    svg.setAttribute('height', '100%');
+    overlay.appendChild(svg);
+
+    // Group cards by row
+    var topCards = [], middleCards = [], bottomCards = [];
+    var cardMap = {};
+    cardDefs.forEach(function(def) {
+        cardMap[def.id] = def;
+        if (def.row === 'top') topCards.push(def);
+        else if (def.row === 'middle') middleCards.push(def);
+        else if (def.row === 'bottom') bottomCards.push(def);
+    });
+
+    // Create the three rows
+    var topRow = document.createElement('div');
+    topRow.className = 'hg-row hg-row--top';
+    topRow.id = 'hg-row-top';
+
+    var middleRow = document.createElement('div');
+    middleRow.className = 'hg-row hg-row--middle';
+    middleRow.id = 'hg-row-middle';
+
+    var bottomRow = document.createElement('div');
+    bottomRow.className = 'hg-row hg-row--bottom';
+    bottomRow.id = 'hg-row-bottom';
+
+    // Track card elements + their defs for arrow drawing
+    var cardEls = [];
+
+    // Populate top row (Agents, Jobs, Rules)
+    topCards.forEach(function(def) {
+        var card = document.createElement('div');
+        card.className = 'hg-card' + (def.light ? ' hg-card--light' : '') + (def.wide ? ' hg-card--wide' : '');
+        card.id = def.id;
+        card.innerHTML = def.html;
+        card.addEventListener('click', function(e) { e.stopPropagation(); });
+        topRow.appendChild(card);
+        cardEls.push({ el: card, def: def });
+    });
+
+    // Populate middle row (Channels)
+    middleCards.forEach(function(def) {
+        var card = document.createElement('div');
+        card.className = 'hg-card' + (def.light ? ' hg-card--light' : '') + (def.wide ? ' hg-card--wide' : '');
+        card.id = def.id;
+        card.innerHTML = def.html;
+        card.addEventListener('click', function(e) { e.stopPropagation(); });
+        middleRow.appendChild(card);
+        cardEls.push({ el: card, def: def });
+    });
+
+    // Populate bottom row (Sessions, Mentions, Scheduling)
+    bottomCards.forEach(function(def) {
+        var card = document.createElement('div');
+        card.className = 'hg-card' + (def.light ? ' hg-card--light' : '') + (def.wide ? ' hg-card--wide' : '');
+        card.id = def.id;
+        card.innerHTML = def.html;
+        card.addEventListener('click', function(e) { e.stopPropagation(); });
+        bottomRow.appendChild(card);
+        cardEls.push({ el: card, def: def });
+    });
+
+    overlay.appendChild(topRow);
+    overlay.appendChild(middleRow);
+    overlay.appendChild(bottomRow);
+
+    // Create spotlight rings on anchor elements
+    cardDefs.forEach(function(def) {
+        var anchorEl = document.querySelector(def.anchor);
+        if (!anchorEl) return;
+        var rect = anchorEl.getBoundingClientRect();
+        var spot = document.createElement('div');
+        spot.className = 'hg-spotlight';
+        spot.dataset.anchor = def.anchor;
+        var pad = 4;
+        spot.style.left = (rect.left - pad) + 'px';
+        spot.style.top = (rect.top - pad) + 'px';
+        spot.style.width = (rect.width + pad * 2) + 'px';
+        spot.style.height = (rect.height + pad * 2) + 'px';
+        overlay.appendChild(spot);
+    });
+
+    // Dismiss hint
+    var hint = document.createElement('div');
+    hint.className = 'hg-dismiss-hint';
+    hint.textContent = 'Press Esc or click outside to close';
+    overlay.appendChild(hint);
+
+    document.body.appendChild(overlay);
+
+    // Store refs for resize handler
+    _helpCardEls = cardEls;
+    _helpMode = 'anchored';
+
+    // Position rows and draw arrows after layout
+    requestAnimationFrame(function() {
+        _positionHelpRows();
+        _drawHelpArrows();
+    });
+}
+
+// --- Position rows based on real UI element positions ---
+function _positionHelpRows() {
+    var header = document.querySelector('header');
+    var channelBar = document.getElementById('channel-bar');
+    var footer = document.querySelector('footer');
+
+    var headerBottom = header ? header.getBoundingClientRect().bottom : 48;
+    var channelBarBottom = channelBar ? channelBar.getBoundingClientRect().bottom : headerBottom + 30;
+    var footerTop = footer ? footer.getBoundingClientRect().top : window.innerHeight - 60;
+
+    var topRow = document.getElementById('hg-row-top');
+    var middleRow = document.getElementById('hg-row-middle');
+    var bottomRow = document.getElementById('hg-row-bottom');
+
+    // Channels first (right below channel bar)
+    if (middleRow) middleRow.style.top = (channelBarBottom + 6) + 'px';
+
+    // Agents/Jobs/Rules below channels card
+    if (topRow) {
+        if (middleRow) {
+            var middleBottom = middleRow.getBoundingClientRect().bottom;
+            topRow.style.top = (middleBottom + 10) + 'px';
+        } else {
+            topRow.style.top = (channelBarBottom + 6) + 'px';
+        }
+    }
+
+    if (bottomRow) bottomRow.style.bottom = (window.innerHeight - footerTop + 6) + 'px';
+}
+
+// --- Draw SVG connector lines from cards to their anchors ---
+function _drawHelpArrows() {
+    var svgNS = 'http://www.w3.org/2000/svg';
+    var svg = document.getElementById('hg-svg-layer');
+    if (!svg) return;
+
+    // Clear existing lines
+    while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+    _helpCardEls.forEach(function(item) {
+        var cardEl = item.el;
+        var def = item.def;
+        var anchorEl = document.querySelector(def.anchor);
+        if (!anchorEl) return;
+
+        var cardRect = cardEl.getBoundingClientRect();
+        var anchorRect = anchorEl.getBoundingClientRect();
+
+        var cardCx = cardRect.left + cardRect.width / 2;
+        var anchorCx = anchorRect.left + anchorRect.width / 2;
+
+        var lineX1, lineY1, lineX2, lineY2;
+
+        if (def.row === 'top' || def.row === 'middle') {
+            // Line from card top-center UP to anchor bottom-center
+            lineX1 = cardCx;
+            lineY1 = cardRect.top;
+            lineX2 = anchorCx;
+            lineY2 = anchorRect.bottom;
+        } else {
+            // Line from card bottom-center DOWN to anchor top-center
+            lineX1 = cardCx;
+            lineY1 = cardRect.bottom;
+            lineX2 = anchorCx;
+            lineY2 = anchorRect.top;
+        }
+
+        var line = document.createElementNS(svgNS, 'line');
+        line.setAttribute('x1', lineX1);
+        line.setAttribute('y1', lineY1);
+        line.setAttribute('x2', lineX2);
+        line.setAttribute('y2', lineY2);
+        svg.appendChild(line);
+
+        // Dot at anchor end
+        var dot = document.createElementNS(svgNS, 'circle');
+        dot.setAttribute('cx', lineX2);
+        dot.setAttribute('cy', lineY2);
+        dot.setAttribute('r', '2.5');
+        dot.setAttribute('class', 'hg-arrow-dot');
+        svg.appendChild(dot);
+    });
+}
+
+// --- Stacked modal (narrow viewport) mode ---
+function _openHelpStacked(cardDefs) {
+    // Main overlay container
+    var overlay = document.createElement('div');
+    overlay.className = 'help-guide';
+    overlay.id = 'help-guide';
+
+    // Backdrop (inside overlay)
+    var backdrop = document.createElement('div');
+    backdrop.className = 'hg-backdrop';
+    backdrop.addEventListener('click', closeHelp);
+    overlay.appendChild(backdrop);
+
+    var modal = document.createElement('div');
+    modal.className = 'hg-modal';
+
+    var content = document.createElement('div');
+    content.className = 'hg-content';
+
+    // Sticky header
+    var header = document.createElement('div');
+    header.className = 'hg-modal-header';
+    header.innerHTML = '<span class="hg-modal-title">Guide</span>';
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'hg-modal-close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.addEventListener('click', closeHelp);
+    header.appendChild(closeBtn);
+    content.appendChild(header);
+
+    // Card order for stacked: Agents, Jobs, Rules, Channels, Sessions, Scheduling, Mentions
+    var stackedOrder = ['hg-agents', 'hg-jobs', 'hg-rules', 'hg-channels', 'hg-sessions', 'hg-scheduling', 'hg-mentions'];
+    var cardMap = {};
+    cardDefs.forEach(function(def) { cardMap[def.id] = def; });
+
+    stackedOrder.forEach(function(id) {
+        var def = cardMap[id];
+        if (!def) return;
+        var mod = document.createElement('div');
+        mod.className = 'hg-module';
+        mod.innerHTML = def.html;
+        mod.addEventListener('click', function(e) { e.stopPropagation(); });
+        content.appendChild(mod);
+    });
+
+    modal.appendChild(content);
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+
+    _helpCardEls = [];
+    _helpMode = 'stacked';
+}
+
+// --- Reposition rows, spotlights, and redraw arrows on resize ---
+function _helpResizeHandler() {
+    clearTimeout(_helpResizeTimer);
+    _helpResizeTimer = setTimeout(function() {
+        if (!_helpOpen) return;
+
+        // If viewport crossed the threshold, teardown and rebuild in the other mode
+        var shouldBeAnchored = window.innerWidth >= 900;
+        if ((_helpMode === 'anchored') !== shouldBeAnchored) {
+            closeHelp();
+            openHelp();
+            return;
+        }
+
+        if (_helpMode !== 'anchored') return;
+
+        // Re-measure and update row positions
+        _positionHelpRows();
+
+        // Reposition spotlight rings
+        var spots = document.querySelectorAll('.hg-spotlight');
+        spots.forEach(function(spot) {
+            var anchorEl = document.querySelector(spot.dataset.anchor);
+            if (!anchorEl) return;
+            var r = anchorEl.getBoundingClientRect();
+            var pad = 4;
+            spot.style.left = (r.left - pad) + 'px';
+            spot.style.top = (r.top - pad) + 'px';
+            spot.style.width = (r.width + pad * 2) + 'px';
+            spot.style.height = (r.height + pad * 2) + 'px';
+        });
+
+        // Redraw arrows
+        _drawHelpArrows();
+    }, 60);
+}
+
+var _helpCardEls = [];
+var _helpMode = null; // 'anchored' or 'stacked'
+
+function openHelp() {
+    closeHelp();
+    _helpOpen = true;
+
+    var cardDefs = _helpCardDefs();
+
+    if (window.innerWidth >= 900) {
+        _openHelpAnchored(cardDefs);
+    } else {
+        _openHelpStacked(cardDefs);
+    }
+
+    document.addEventListener('keydown', _helpKeyHandler);
+    window.addEventListener('resize', _helpResizeHandler);
+}
+
+function closeHelp() {
+    _helpOpen = false;
+    _helpCardEls = [];
+    _helpMode = null;
+    clearTimeout(_helpResizeTimer);
+    window.removeEventListener('resize', _helpResizeHandler);
+    var el = document.getElementById('help-guide');
+    if (el) el.remove();
+    // Spotlights and SVG layer are inside help-guide, so they get removed too
+    document.removeEventListener('keydown', _helpKeyHandler);
+    localStorage.setItem('help_seen', '1');
+}
+
+function _helpKeyHandler(e) {
+    if (e.key === 'Escape') closeHelp();
+}
+
+window.toggleHelp = toggleHelp;
+window.closeHelp = closeHelp;
+
+// Auto-show on first visit
+function initHelpTour() {
+    if (!localStorage.getItem('help_seen')) {
+        setTimeout(openHelp, 2500);
+    }
+}
+
 // --- Start ---
 
-document.addEventListener('DOMContentLoaded', init);
+document.addEventListener('DOMContentLoaded', function() { init(); initHelpTour(); });

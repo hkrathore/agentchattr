@@ -1,5 +1,7 @@
 #!/usr/bin/env sh
-# agentchattr - starts server (if not running) + Gemini wrapper
+# agentchattr — starts server (if not running) + MiniMax API agent wrapper
+# Usage: sh start_minimax.sh
+# Requires MINIMAX_API_KEY environment variable.
 cd "$(dirname "$0")/.."
 
 PYTHON_BIN=""
@@ -36,14 +38,12 @@ is_server_running() {
     ss -tlnp 2>/dev/null | grep -q ':8300 '
 }
 
-# Warn if ripgrep is missing (Gemini CLI can hang on init - upstream bug)
-if ! command -v rg >/dev/null 2>&1; then
-    echo ""
-    echo "  Warning: ripgrep (rg) not found on PATH."
-    echo "  Gemini CLI can hang on \"Initializing...\" for several minutes."
-    echo "  Fix: apt install ripgrep (Linux) or brew install ripgrep (macOS)"
-    echo "  See: https://github.com/google-gemini/gemini-cli/issues/13986"
-    echo ""
+# Check API key
+if [ -z "$MINIMAX_API_KEY" ]; then
+    echo "Error: MINIMAX_API_KEY environment variable is not set."
+    echo "Get an API key at https://platform.minimax.io"
+    echo "Then: export MINIMAX_API_KEY=your-key-here"
+    exit 1
 fi
 
 ensure_venv
@@ -71,4 +71,4 @@ if ! is_server_running; then
     done
 fi
 
-.venv/bin/python wrapper.py gemini
+.venv/bin/python wrapper_api.py minimax
