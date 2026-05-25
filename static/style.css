@@ -4576,6 +4576,17 @@ footer {
         display: none !important;
     }
 
+    /* iOS Safari auto-zooms (and pans) when focusing any input/textarea/select
+       whose computed font-size is below 16px. That re-introduces the exact
+       "view not locked" symptom this whole media block was added to fix. Floor
+       all form controls at 16px on mobile so Safari leaves the viewport alone
+       when the user taps to type. */
+    input,
+    textarea,
+    select {
+        font-size: 16px;
+    }
+
     /* Safe-area insets for notches / Android Chrome dynamic toolbar. */
     header {
         padding-left: max(12px, env(safe-area-inset-left));
