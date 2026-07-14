@@ -20,11 +20,16 @@ cwd = ".."
 color = "#10a37f"
 label = "Codex"
 
-[agents.gemini]
-command = "gemini"
-cwd = ".."
-color = "#4285f4"
-label = "Gemini"
+# Disabled 2026-07-14: Gemini CLI auth deprecated for individual Google accounts
+# (login-with-Google no longer works on this headless host → constant auth errors).
+# systemd unit agentchattr-gemini.service also stopped + disabled.
+# To restore: uncomment this block, run `systemctl --user enable --now agentchattr-gemini.service`,
+# then restart agentchattr.service.
+# [agents.gemini]
+# command = "gemini"
+# cwd = ".."
+# color = "#4285f4"
+# label = "Gemini"
 
 [agents.kimi]
 command = "kimi"

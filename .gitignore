@@ -22,3 +22,12 @@ docs/
 goals.py
 pr-reviews/
 agentchattr-*.zip
+
+# Secrets — never commit TLS material (e.g. oracle-vps.tail2c9e48.ts.net.key/.crt)
+*.key
+*.crt
+*.pem
+
+# Local backup files (config.local.toml.bak.*, *.sh.bak.*, etc.)
+*.bak
+*.bak.*
