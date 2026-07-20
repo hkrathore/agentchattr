@@ -37,15 +37,18 @@ cwd = ".."
 color = "#1783ff"
 label = "Kimi"
 
-[agents.qwen]
-command = "qwen"
-cwd = ".."
-color = "#8b5cf6"
-label = "Qwen"
-mcp_inject = "settings_file"
-mcp_settings_path = ".qwen/settings.json"
-mcp_transport = "http"
-inject_delay = 1.0
+# Disabled 2026-07-14: Qwen OAuth free tier discontinued (2026-04-15), so the
+# CLI-based qwen agent can't authenticate. Replaced by a Groq-hosted qwen3-32b
+# `api` agent defined in config.local.toml ([agents.qwen], type = "api").
+# [agents.qwen]
+# command = "qwen"
+# cwd = ".."
+# color = "#8b5cf6"
+# label = "Qwen"
+# mcp_inject = "settings_file"
+# mcp_settings_path = ".qwen/settings.json"
+# mcp_transport = "http"
+# inject_delay = 1.0
 
 [agents.kilo]
 command = "kilo"
