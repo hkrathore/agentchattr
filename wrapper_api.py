@@ -21,6 +21,7 @@ How it works:
 import argparse
 import json
 import os
+import signal
 import sys
 import threading
 import time
@@ -94,6 +95,13 @@ def main():
         if temperature > 2.0:
             temperature = 2.0
     context_messages = int(agent_cfg.get("context_messages", 20))
+    # Optional: reasoning-model control.
+    #   reasoning_effort — "none" disables thinking; "default"/"low"/"medium"/
+    #     "high" (provider-dependent) enable it. Omit to use the model default.
+    #   reasoning_format — Groq only: "hidden" returns just the answer,
+    #     "parsed" puts thinking in a separate field, "raw" inlines <think> tags.
+    reasoning_effort = agent_cfg.get("reasoning_effort")
+    reasoning_format = agent_cfg.get("reasoning_format")
     system_prompt = agent_cfg.get("system_prompt",
         f"You are {agent_cfg.get('label', agent)}, a helpful AI assistant participating "
         "in a developer chat room. Keep responses concise and relevant. "
@@ -114,6 +122,10 @@ def main():
     # Thread-safe identity state (can change via heartbeat rename)
     _lock = threading.Lock()
     _state = {"name": name, "token": token, "working": False}
+    # Set on SIGTERM/SIGINT so the heartbeat thread stops re-registering while
+    # we're shutting down (otherwise a beat racing the deregister would 409 and
+    # mint a fresh ghost identity — the very duplicate we're avoiding).
+    _shutdown = threading.Event()
 
     def get_name():
         with _lock:
@@ -140,7 +152,7 @@ def main():
 
     # Heartbeat thread — same pattern as wrapper.py
     def _heartbeat():
-        while True:
+        while not _shutdown.is_set():
             try:
                 n = get_name()
                 t = get_token()
@@ -157,7 +169,7 @@ def main():
                     set_identity(new_name=server_name)
                     print(f"  Identity updated: {n} -> {server_name}")
             except urllib.error.HTTPError as exc:
-                if exc.code == 409:
+                if exc.code == 409 and not _shutdown.is_set():
                     try:
                         replacement = _register_instance(server_port, agent, args.label)
                         set_identity(replacement["name"], replacement["token"])
@@ -169,6 +181,15 @@ def main():
             time.sleep(5)
 
     threading.Thread(target=_heartbeat, daemon=True).start()
+
+    # systemd stop/restart delivers SIGTERM; route it through the same clean
+    # shutdown path as Ctrl+C (SIGINT) so we always deregister. Without this the
+    # process is killed mid-loop, leaving a stale "active" instance that collides
+    # on the next restart and shows up as a duplicate agent.
+    def _handle_termination(signum, frame):
+        raise KeyboardInterrupt()
+
+    signal.signal(signal.SIGTERM, _handle_termination)
 
     # Get this agent's role from server status
     def get_my_role():
@@ -232,9 +253,15 @@ def main():
             payload["model"] = model
         if temperature is not None:
             payload["temperature"] = temperature
+        if reasoning_effort:
+            payload["reasoning_effort"] = reasoning_effort
+        if reasoning_format:
+            payload["reasoning_format"] = reasoning_format
         body = json.dumps(payload).encode()
 
-        headers = {"Content-Type": "application/json"}
+        # Some providers' edge (e.g. Groq/Cloudflare) 403 the default
+        # "Python-urllib" User-Agent, so send an explicit one.
+        headers = {"Content-Type": "application/json", "User-Agent": "agentchattr/1.0"}
         if api_key:
             headers["Authorization"] = f"Bearer {api_key}"
 
@@ -346,6 +373,7 @@ def main():
 
             time.sleep(1)
     except KeyboardInterrupt:
+        _shutdown.set()  # stop the heartbeat thread before we deregister below
         print("\n  Shutting down...")
     finally:
         try:
