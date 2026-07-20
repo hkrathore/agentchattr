@@ -61,4 +61,4 @@ if ! is_server_running; then
     done
 fi
 
-.venv/bin/python wrapper.py claude --dangerously-skip-permissions
+exec .venv/bin/python wrapper.py claude --dangerously-skip-permissions
